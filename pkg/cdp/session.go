@@ -88,3 +88,18 @@ func (sm *SessionManager) All() []*SessionInfo {
 	}
 	return result
 }
+
+// GetBrowserContexts returns unique browser context IDs from all sessions.
+func (sm *SessionManager) GetBrowserContexts() []string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	seen := map[string]bool{}
+	var result []string
+	for _, info := range sm.sessions {
+		if info.BrowserContextID != "" && !seen[info.BrowserContextID] {
+			seen[info.BrowserContextID] = true
+			result = append(result, info.BrowserContextID)
+		}
+	}
+	return result
+}

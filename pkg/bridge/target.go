@@ -163,6 +163,30 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 	case "Target.activateTarget":
 		return json.RawMessage(`{}`), nil
 
+	case "Target.getBrowserContexts":
+		// Return list of browser context IDs
+		contexts := b.sessions.GetBrowserContexts()
+		return marshalResult(map[string]interface{}{"browserContextIds": contexts})
+
+	case "Target.getTargetInfo":
+		var params struct {
+			TargetID string `json:"targetId"`
+		}
+		json.Unmarshal(msg.Params, &params)
+		if info, ok := b.sessions.GetByTarget(params.TargetID); ok {
+			return marshalResult(map[string]interface{}{
+				"targetInfo": map[string]interface{}{
+					"targetId":         info.TargetID,
+					"type":             info.Type,
+					"title":            info.Title,
+					"url":              info.URL,
+					"attached":         true,
+					"browserContextId": info.BrowserContextID,
+				},
+			})
+		}
+		return nil, &cdp.Error{Code: -32000, Message: "target not found"}
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
