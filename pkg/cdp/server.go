@@ -37,14 +37,16 @@ type Server struct {
 	port     int
 	conns    map[*Connection]struct{}
 	connsMu  sync.Mutex
+	sessions *SessionManager
 }
 
 // NewServer creates a CDP server on the given port.
-func NewServer(port int, handler MessageHandler) *Server {
+func NewServer(port int, handler MessageHandler, sessions *SessionManager) *Server {
 	return &Server{
-		handler: handler,
-		port:    port,
-		conns:   make(map[*Connection]struct{}),
+		handler:  handler,
+		port:     port,
+		sessions: sessions,
+		conns:    make(map[*Connection]struct{}),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -99,7 +101,32 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte("[]"))
+	if s.sessions == nil {
+		w.Write([]byte("[]"))
+		return
+	}
+	var targets []map[string]interface{}
+	for _, info := range s.sessions.All() {
+		if info.Type != "page" {
+			continue
+		}
+		url := info.URL
+		if url == "" {
+			url = "about:blank"
+		}
+		targets = append(targets, map[string]interface{}{
+			"id":                   info.TargetID,
+			"type":                 "page",
+			"title":                info.Title,
+			"url":                  url,
+			"devtoolsFrontendUrl":  "",
+			"webSocketDebuggerUrl": fmt.Sprintf("ws://127.0.0.1:%d/devtools/page/%s", s.port, info.TargetID),
+		})
+	}
+	if targets == nil {
+		targets = []map[string]interface{}{}
+	}
+	json.NewEncoder(w).Encode(targets)
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {

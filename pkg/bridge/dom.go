@@ -111,7 +111,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
-		expr := fmt.Sprintf(`document.querySelector(%q) !== null ? 3 : 0`, params.Selector)
+		// Check if element exists
+		expr := fmt.Sprintf(`document.querySelector(%q) !== null`, params.Selector)
 		result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
 			"expression":    expr,
 			"returnByValue": true,
@@ -127,9 +128,15 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 		}
 		json.Unmarshal(result, &evalResult)
 
-		var nodeID int
+		var found bool
 		if evalResult.Result.Value != nil {
-			json.Unmarshal(evalResult.Result.Value, &nodeID)
+			json.Unmarshal(evalResult.Result.Value, &found)
+		}
+
+		nodeID := 0
+		if found {
+			// Allocate a unique node ID using the context counter
+			nodeID = b.nextCtxID()
 		}
 
 		return marshalResult(map[string]interface{}{

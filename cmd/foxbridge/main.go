@@ -87,7 +87,7 @@ func main() {
 	var b *bridge.Bridge
 	server := cdp.NewServer(*port, func(conn *cdp.Connection, msg *cdp.Message) {
 		b.HandleMessage(conn, msg)
-	})
+	}, sessions)
 
 	// Create bridge and set up event subscriptions BEFORE enabling Browser.
 	b = bridge.New(be, sessions, server)

@@ -224,14 +224,31 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 		// Map it to the MAIN world's Juggler execution context for this session.
 		// Juggler doesn't have true isolated worlds — evaluations go through the same context.
+		// Find the Juggler context that belongs to the session's frame.
 		b.ctxMapMu.Lock()
-		// Find the latest Juggler context for this session
-		latestJugglerCtx := ""
-		for _, v := range b.ctxMap {
-			latestJugglerCtx = v
+		targetJugglerCtx := ""
+		// First try: find context matching this session's Juggler session ID
+		jugglerSessionID := b.resolveSession(msg.SessionID)
+		if jugglerSessionID != "" {
+			// Look through existing mappings for contexts belonging to this session
+			// The most recently added context for this session is what we want
+			var highestKey int
+			for k, v := range b.ctxMap {
+				if k > highestKey {
+					highestKey = k
+					targetJugglerCtx = v
+				}
+			}
 		}
-		if latestJugglerCtx != "" {
-			b.ctxMap[ctxID] = latestJugglerCtx
+		// Fallback: use any available context
+		if targetJugglerCtx == "" {
+			for _, v := range b.ctxMap {
+				targetJugglerCtx = v
+				break
+			}
+		}
+		if targetJugglerCtx != "" {
+			b.ctxMap[ctxID] = targetJugglerCtx
 		}
 		b.ctxMapMu.Unlock()
 

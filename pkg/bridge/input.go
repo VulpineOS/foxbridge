@@ -17,6 +17,8 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			Button     string  `json:"button"`
 			ClickCount int     `json:"clickCount"`
 			Modifiers  int     `json:"modifiers"`
+			DeltaX     float64 `json:"deltaX"`
+			DeltaY     float64 `json:"deltaY"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
@@ -35,6 +37,12 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		}
 		if params.Modifiers > 0 {
 			jugglerParams["modifiers"] = params.Modifiers
+		}
+		if params.DeltaX != 0 {
+			jugglerParams["deltaX"] = params.DeltaX
+		}
+		if params.DeltaY != 0 {
+			jugglerParams["deltaY"] = params.DeltaY
 		}
 
 		_, err := b.callJuggler(msg.SessionID, "Page.dispatchMouseEvent", jugglerParams)

@@ -129,6 +129,27 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		// Handled via Emulation or stub — no-op here.
 		return json.RawMessage(`{}`), nil
 
+	case "Network.emulateNetworkConditions":
+		// Juggler doesn't support network throttling directly.
+		// No-op but return success so Puppeteer doesn't error.
+		return json.RawMessage(`{}`), nil
+
+	case "Network.getResponseBody":
+		var params struct {
+			RequestID string `json:"requestId"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		result, err := b.callJuggler("", "Browser.getResponseBody", map[string]string{
+			"requestId": params.RequestID,
+		})
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
