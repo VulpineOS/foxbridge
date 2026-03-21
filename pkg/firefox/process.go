@@ -23,6 +23,8 @@ type Config struct {
 	Headless bool
 	// Profile directory.
 	ProfileDir string
+	// BiDiPort enables WebDriver BiDi on this port. 0 = disabled.
+	BiDiPort int
 }
 
 // Process manages a Firefox/Camoufox browser process.
@@ -30,6 +32,7 @@ type Process struct {
 	cmd       *exec.Cmd
 	client    *juggler.Client
 	transport *juggler.PipeTransport
+	bidiPort  int
 	startedAt time.Time
 	waited    bool
 	mu        sync.Mutex
@@ -68,6 +71,9 @@ func (p *Process) Start(cfg Config) error {
 	}
 	if cfg.ProfileDir != "" {
 		args = append(args, "--profile", cfg.ProfileDir)
+	}
+	if cfg.BiDiPort > 0 {
+		args = append(args, fmt.Sprintf("--remote-debugging-port=%d", cfg.BiDiPort))
 	}
 	args = append(args, cfg.ExtraArgs...)
 
@@ -109,6 +115,7 @@ func (p *Process) Start(cfg Config) error {
 	p.cmd = cmd
 	p.client = client
 	p.transport = transport
+	p.bidiPort = cfg.BiDiPort
 	p.startedAt = time.Now()
 
 	return nil
@@ -129,6 +136,16 @@ func (p *Process) PID() int {
 		return p.cmd.Process.Pid
 	}
 	return 0
+}
+
+// BiDiURL returns the WebDriver BiDi WebSocket URL, or empty if BiDi is not enabled.
+func (p *Process) BiDiURL() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.bidiPort > 0 {
+		return fmt.Sprintf("ws://127.0.0.1:%d/session", p.bidiPort)
+	}
+	return ""
 }
 
 // Running returns true if the process is alive.

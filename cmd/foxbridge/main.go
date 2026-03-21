@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	backendpkg "github.com/PopcornDev1/foxbridge/pkg/backend"
 	"github.com/PopcornDev1/foxbridge/pkg/backend/bidi"
@@ -23,6 +25,7 @@ func main() {
 	profile := flag.String("profile", "", "Firefox profile directory")
 	backendMode := flag.String("backend", "juggler", "Backend protocol: juggler or bidi")
 	bidiURL := flag.String("bidi-url", "", "BiDi WebSocket URL (for --backend bidi without launching Firefox)")
+	bidiPort := flag.Int("bidi-port", 9223, "Port for BiDi WebSocket when auto-launching Firefox")
 	flag.Parse()
 
 	var be backendpkg.Backend
@@ -57,23 +60,36 @@ func main() {
 			be = client
 			log.Printf("connected to BiDi endpoint: %s", *bidiURL)
 		} else {
-			// Launch Firefox and connect via BiDi
-			// For now, launch Firefox with Juggler pipe but use BiDi client for the bridge.
-			// Future: launch Firefox with BiDi WebSocket and connect to it.
+			// Launch Firefox with BiDi WebSocket enabled and connect to it.
 			proc = firefox.New()
 			err := proc.Start(firefox.Config{
 				BinaryPath: *binary,
 				Headless:   *headless,
 				ProfileDir: *profile,
+				BiDiPort:   *bidiPort,
 				ExtraArgs:  flag.Args(),
 			})
 			if err != nil {
 				log.Fatalf("failed to start firefox: %v", err)
 			}
 			defer proc.Stop()
-			log.Printf("firefox started (PID %d), BiDi backend selected but using Juggler pipe for now", proc.PID())
-			// Fallback to Juggler until Firefox BiDi WebSocket discovery is implemented
-			be = proc.Client()
+
+			// Wait for the BiDi WebSocket port to become available.
+			wsURL := proc.BiDiURL()
+			addr := fmt.Sprintf("127.0.0.1:%d", *bidiPort)
+			log.Printf("firefox started (PID %d), waiting for BiDi on %s...", proc.PID(), addr)
+			if err := waitForPort(addr, 15*time.Second); err != nil {
+				log.Fatalf("BiDi port never became available: %v", err)
+			}
+
+			transport, err := bidi.Dial(wsURL)
+			if err != nil {
+				log.Fatalf("failed to connect to BiDi endpoint %s: %v", wsURL, err)
+			}
+			client := bidi.NewClient(transport)
+			defer client.Close()
+			be = client
+			log.Printf("connected to auto-discovered BiDi endpoint: %s", wsURL)
 		}
 
 	default:
@@ -129,4 +145,18 @@ func main() {
 	case <-done:
 		log.Println("firefox exited")
 	}
+}
+
+// waitForPort polls a TCP address until it accepts connections or the timeout expires.
+func waitForPort(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for %s after %v", addr, timeout)
 }
