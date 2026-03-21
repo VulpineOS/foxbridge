@@ -171,16 +171,51 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Runtime.executionContextCreated → Runtime.executionContextCreated
+	// Juggler: {executionContextId, auxData: {frameId, name}}
+	// CDP:     {context: {id, origin, name, uniqueId, auxData: {isDefault, type, frameId}}}
+	var ctxCounter int
 	b.backend.Subscribe("Runtime.executionContextCreated", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
-		// Pass through — Juggler format is close enough to CDP.
-		b.emitEventRaw("Runtime.executionContextCreated", params, cdpSessionID)
+		ctxCounter++
+
+		var ev struct {
+			ExecutionContextID string `json:"executionContextId"`
+			AuxData            struct {
+				FrameID string `json:"frameId"`
+				Name    string `json:"name"`
+			} `json:"auxData"`
+		}
+		json.Unmarshal(params, &ev)
+
+		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+			"context": map[string]interface{}{
+				"id":       ctxCounter,
+				"origin":   "",
+				"name":     ev.AuxData.Name,
+				"uniqueId": ev.ExecutionContextID,
+				"auxData": map[string]interface{}{
+					"isDefault": true,
+					"type":      "default",
+					"frameId":   ev.AuxData.FrameID,
+				},
+			},
+		}, cdpSessionID)
 	})
 
 	// Runtime.executionContextDestroyed → Runtime.executionContextDestroyed
+	// Juggler: {executionContextId}
+	// CDP:     {executionContextId, executionContextUniqueId}
 	b.backend.Subscribe("Runtime.executionContextDestroyed", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
-		b.emitEventRaw("Runtime.executionContextDestroyed", params, cdpSessionID)
+		var ev struct {
+			ExecutionContextID string `json:"executionContextId"`
+		}
+		json.Unmarshal(params, &ev)
+
+		b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
+			"executionContextId":         ctxCounter, // use last known
+			"executionContextUniqueId":   ev.ExecutionContextID,
+		}, cdpSessionID)
 	})
 
 	// Runtime.console → Runtime.consoleAPICalled

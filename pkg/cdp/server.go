@@ -133,6 +133,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		log.Printf("[cdp-in] #%d %s (session=%s)", msg.ID, msg.Method, msg.SessionID)
 		s.handler(conn, &msg)
 	}
 }

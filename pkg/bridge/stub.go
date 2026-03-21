@@ -65,5 +65,27 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return json.RawMessage(`{}`), nil
 	}
 
+	// Specific method stubs needed for Puppeteer compatibility.
+	switch method {
+	case "Runtime.runIfWaitingForDebugger":
+		return json.RawMessage(`{}`), nil
+	case "Page.getFrameTree":
+		return json.RawMessage(`{"frameTree":{"frame":{"id":"main","loaderId":"","url":"about:blank","securityOrigin":"","mimeType":"text/html"}}}`), nil
+	case "Page.setLifecycleEventsEnabled":
+		return json.RawMessage(`{}`), nil
+	case "Page.addScriptToEvaluateOnNewDocument":
+		return marshalResult(map[string]string{"identifier": "1"})
+	case "Page.createIsolatedWorld":
+		return marshalResult(map[string]interface{}{"executionContextId": 1})
+	case "Page.setInterceptFileChooserDialog":
+		return json.RawMessage(`{}`), nil
+	case "Emulation.setDefaultBackgroundColorOverride":
+		return json.RawMessage(`{}`), nil
+	case "Target.setAutoAttach":
+		return json.RawMessage(`{}`), nil
+	case "Target.setDiscoverTargets":
+		return json.RawMessage(`{}`), nil
+	}
+
 	return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", method)}
 }
