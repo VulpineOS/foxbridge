@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/PopcornDev1/foxbridge/pkg/backend"
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
@@ -15,6 +16,9 @@ type Bridge struct {
 	sessions   *cdp.SessionManager
 	server     *cdp.Server
 	autoAttach *autoAttachState
+	// ctxMap maps numeric CDP execution context IDs to Juggler execution context ID strings
+	ctxMapMu sync.RWMutex
+	ctxMap   map[int]string // cdpContextID → jugglerContextID
 }
 
 // New creates a new Bridge.
@@ -24,6 +28,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		sessions:   sessions,
 		server:     server,
 		autoAttach: newAutoAttachState(),
+		ctxMap:     make(map[int]string),
 	}
 }
 

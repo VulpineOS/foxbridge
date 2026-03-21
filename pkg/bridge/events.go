@@ -214,11 +214,17 @@ func (b *Bridge) SetupEventSubscriptions() {
 			loaderId = fmt.Sprintf("loader-%d", navCounter)
 		}
 
-		// Emit lifecycle "init" event to signal new document navigation to Puppeteer
+		// Emit lifecycle events in Chrome's order: init → commit → frameNavigated
 		b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
 			"frameId":   ev.FrameID,
 			"loaderId":  loaderId,
 			"name":      "init",
+			"timestamp": 0,
+		}, cdpSessionID)
+		b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+			"frameId":   ev.FrameID,
+			"loaderId":  loaderId,
+			"name":      "commit",
 			"timestamp": 0,
 		}, cdpSessionID)
 
@@ -262,6 +268,9 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"name":      "load",
 				"timestamp": 0,
 			}, cdpSessionID)
+			b.emitEvent("Page.frameStoppedLoading", map[string]interface{}{
+				"frameId": ev.FrameID,
+			}, cdpSessionID)
 		case "DOMContentLoaded":
 			b.emitEvent("Page.domContentEventFired", map[string]interface{}{
 				"timestamp": 0,
@@ -272,6 +281,14 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"name":      "DOMContentLoaded",
 				"timestamp": 0,
 			}, cdpSessionID)
+		}
+	})
+
+	// Runtime.executionContextsCleared → Runtime.executionContextsCleared
+	b.backend.Subscribe("Runtime.executionContextsCleared", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		if cdpSessionID != "" {
+			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
 		}
 	})
 
@@ -305,6 +322,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 				b.autoAttach.mu.Unlock()
 			}
 		}
+
+		// Store the mapping: numeric CDP ID → Juggler string ID
+		b.ctxMapMu.Lock()
+		b.ctxMap[ctxCounter] = ev.ExecutionContextID
+		b.ctxMapMu.Unlock()
 
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{

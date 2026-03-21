@@ -92,7 +92,33 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 	case "Page.addScriptToEvaluateOnNewDocument":
 		return marshalResult(map[string]string{"identifier": "1"})
 	case "Page.createIsolatedWorld":
-		return marshalResult(map[string]interface{}{"executionContextId": 1})
+		var params struct {
+			FrameID             string `json:"frameId"`
+			WorldName           string `json:"worldName"`
+			GrantUniversalAccess bool  `json:"grantUniveralAccess"`
+		}
+		json.Unmarshal(msg.Params, &params)
+
+		// Generate a unique context ID for the isolated world
+		ctxID := 9999 // placeholder
+		uniqueID := fmt.Sprintf("isolated-%s-%s", params.FrameID, params.WorldName)
+
+		// Emit Runtime.executionContextCreated for the isolated world
+		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+			"context": map[string]interface{}{
+				"id":       ctxID,
+				"origin":   "",
+				"name":     params.WorldName,
+				"uniqueId": uniqueID,
+				"auxData": map[string]interface{}{
+					"isDefault": false,
+					"type":      "isolated",
+					"frameId":   params.FrameID,
+				},
+			},
+		}, msg.SessionID)
+
+		return marshalResult(map[string]interface{}{"executionContextId": ctxID})
 	case "Page.setInterceptFileChooserDialog":
 		return json.RawMessage(`{}`), nil
 	case "Emulation.setDefaultBackgroundColorOverride":

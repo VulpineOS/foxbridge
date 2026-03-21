@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -10,9 +11,41 @@ import (
 func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
 	switch msg.Method {
 	case "Runtime.enable":
+		// After returning success, emit executionContextCreated for existing contexts
+		// (Puppeteer expects these after Runtime.enable, like Chrome does)
+		go func() {
+			// Get frame ID from the session
+			jugglerSessionID := b.resolveSession(msg.SessionID)
+			frameID := ""
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				frameID = info.FrameID
+			}
+			if frameID == "" && jugglerSessionID != "" {
+				if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
+					frameID = info.FrameID
+				}
+			}
+			if frameID != "" {
+				// Emit a default execution context for this frame
+				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+					"context": map[string]interface{}{
+						"id":       100, // distinct from earlier contexts
+						"origin":   "https://example.com",
+						"name":     "",
+						"uniqueId": fmt.Sprintf("ctx-%s-main", jugglerSessionID),
+						"auxData": map[string]interface{}{
+							"isDefault": true,
+							"type":      "default",
+							"frameId":   frameID,
+						},
+					},
+				}, msg.SessionID)
+			}
+		}()
 		return json.RawMessage(`{}`), nil
 
 	case "Runtime.evaluate":
+		log.Printf("[runtime] evaluate on session=%s params=%s", msg.SessionID, string(msg.Params)[:min(len(msg.Params), 200)])
 		var params struct {
 			Expression            string `json:"expression"`
 			ReturnByValue         bool   `json:"returnByValue"`
@@ -27,18 +60,17 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
-		// Juggler requires executionContextId — use uniqueContextId from CDP
-		// (which is the Juggler execution context ID we sent in Runtime.executionContextCreated)
+		// Map CDP contextId (numeric) to Juggler executionContextId (string)
 		execCtxID := params.UniqueContextID
-		if execCtxID == "" {
-			// Try to find it from the session's stored frame info
-			jugglerSessionID := b.resolveSession(msg.SessionID)
-			if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok && info.FrameID != "" {
-				// Use the frame ID as context lookup — but Juggler just needs any valid executionContextId
-				// The simplest approach: find it by trying the evaluate without one first
+		if execCtxID == "" && params.ContextID > 0 {
+			b.ctxMapMu.RLock()
+			if mapped, ok := b.ctxMap[params.ContextID]; ok {
+				execCtxID = mapped
 			}
+			b.ctxMapMu.RUnlock()
 		}
 
+		// Juggler only accepts: executionContextId, expression, returnByValue
 		jugglerParams := map[string]interface{}{
 			"expression":    params.Expression,
 			"returnByValue": params.ReturnByValue,
@@ -46,18 +78,16 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		if execCtxID != "" {
 			jugglerParams["executionContextId"] = execCtxID
 		}
-		if params.AwaitPromise {
-			jugglerParams["awaitPromise"] = true
-		}
+		// Note: awaitPromise is NOT supported by Juggler's Runtime.evaluate
 
+		log.Printf("[runtime] calling Juggler Runtime.evaluate with %v", jugglerParams)
 		result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", jugglerParams)
 		if err != nil {
+			log.Printf("[runtime] evaluate error: %v", err)
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 
-		// Translate Juggler result format to CDP format
-		// Juggler: {result: {type, value, ...}, exceptionDetails: {...}}
-		// CDP:     {result: {type, value, description, ...}, exceptionDetails: {...}}
+		log.Printf("[runtime] evaluate result: %s", string(result)[:min(len(result), 300)])
 		return result, nil
 
 	case "Runtime.callFunctionOn":
@@ -74,22 +104,26 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
+		// Map CDP contextId to Juggler executionContextId
+		execCtxID := params.UniqueContextID
+		if execCtxID == "" && params.ExecutionContextID > 0 {
+			b.ctxMapMu.RLock()
+			if mapped, ok := b.ctxMap[params.ExecutionContextID]; ok {
+				execCtxID = mapped
+			}
+			b.ctxMapMu.RUnlock()
+		}
+
+		// Juggler callFunction only accepts: executionContextId, functionDeclaration, returnByValue, args
 		jugglerParams := map[string]interface{}{
 			"functionDeclaration": params.FunctionDeclaration,
 			"returnByValue":      params.ReturnByValue,
 		}
-		if params.ObjectID != "" {
-			jugglerParams["objectId"] = params.ObjectID
+		if execCtxID != "" {
+			jugglerParams["executionContextId"] = execCtxID
 		}
 		if params.Arguments != nil {
 			jugglerParams["args"] = params.Arguments
-		}
-		if params.AwaitPromise {
-			jugglerParams["awaitPromise"] = true
-		}
-		// Map execution context
-		if params.UniqueContextID != "" {
-			jugglerParams["executionContextId"] = params.UniqueContextID
 		}
 
 		result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", jugglerParams)
