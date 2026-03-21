@@ -93,30 +93,54 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return marshalResult(map[string]string{"identifier": "1"})
 	case "Page.createIsolatedWorld":
 		var params struct {
-			FrameID             string `json:"frameId"`
-			WorldName           string `json:"worldName"`
-			GrantUniversalAccess bool  `json:"grantUniveralAccess"`
+			FrameID              string `json:"frameId"`
+			WorldName            string `json:"worldName"`
+			GrantUniversalAccess bool   `json:"grantUniveralAccess"`
 		}
 		json.Unmarshal(msg.Params, &params)
 
 		// Generate a unique context ID for the isolated world
-		ctxID := 9999 // placeholder
+		// Use a high number to avoid collision with main world contexts
+		b.ctxMapMu.Lock()
+		ctxID := 10000 + len(b.ctxMap)
+		// Map to the MAIN world's Juggler context — isolated worlds in Juggler
+		// just use the same execution context, so we find the latest one
+		latestJugglerCtx := ""
+		for _, v := range b.ctxMap {
+			latestJugglerCtx = v
+		}
+		if latestJugglerCtx != "" {
+			b.ctxMap[ctxID] = latestJugglerCtx
+		}
+		b.ctxMapMu.Unlock()
+
 		uniqueID := fmt.Sprintf("isolated-%s-%s", params.FrameID, params.WorldName)
 
-		// Emit Runtime.executionContextCreated for the isolated world
-		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
-			"context": map[string]interface{}{
-				"id":       ctxID,
-				"origin":   "",
-				"name":     params.WorldName,
-				"uniqueId": uniqueID,
-				"auxData": map[string]interface{}{
-					"isDefault": false,
-					"type":      "isolated",
-					"frameId":   params.FrameID,
+		// Store the mapping for the isolated world too
+		if latestJugglerCtx != "" {
+			b.ctxMapMu.Lock()
+			b.ctxMap[ctxID] = latestJugglerCtx
+			b.ctxMapMu.Unlock()
+		}
+
+		sessionID := msg.SessionID
+
+		// Emit the context event AFTER returning the response
+		go func() {
+			b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+				"context": map[string]interface{}{
+					"id":       ctxID,
+					"origin":   "",
+					"name":     params.WorldName,
+					"uniqueId": uniqueID,
+					"auxData": map[string]interface{}{
+						"isDefault": false,
+						"type":      "isolated",
+						"frameId":   params.FrameID,
+					},
 				},
-			},
-		}, msg.SessionID)
+			}, sessionID)
+		}()
 
 		return marshalResult(map[string]interface{}{"executionContextId": ctxID})
 	case "Page.setInterceptFileChooserDialog":
