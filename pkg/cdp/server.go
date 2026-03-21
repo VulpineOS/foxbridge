@@ -77,8 +77,12 @@ func (s *Server) Broadcast(msg *Message) {
 	}
 	s.connsMu.Unlock()
 
+	data, _ := json.Marshal(msg)
+	log.Printf("[broadcast] %s to %d clients: %s", msg.Method, len(conns), string(data)[:min(len(data), 300)])
 	for _, c := range conns {
-		_ = c.Send(msg)
+		if err := c.Send(msg); err != nil {
+			log.Printf("[broadcast] send error: %v", err)
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,6 +130,9 @@ func (c *Client) readLoop() {
 			c.handlerMu.RLock()
 			handlers := c.handlers[msg.Method]
 			c.handlerMu.RUnlock()
+			if len(handlers) == 0 {
+				log.Printf("[juggler] unhandled event: %s (session=%s)", msg.Method, msg.SessionID)
+			}
 			for _, h := range handlers {
 				h(msg.SessionID, msg.Params)
 			}

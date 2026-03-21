@@ -12,6 +12,7 @@ import (
 func (b *Bridge) SetupEventSubscriptions() {
 	// Browser.attachedToTarget — new page created, register session and emit CDP events.
 	b.backend.Subscribe("Browser.attachedToTarget", func(sessionID string, params json.RawMessage) {
+		log.Printf("[event] Browser.attachedToTarget received (len=%d)", len(params))
 		var ev struct {
 			SessionID        string `json:"sessionId"`
 			TargetInfo       struct {

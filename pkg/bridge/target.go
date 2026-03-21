@@ -11,11 +11,8 @@ import (
 func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
 	switch msg.Method {
 	case "Target.setDiscoverTargets":
-		// Enable browser-level events in Juggler.
-		_, err := b.callJuggler("", "Browser.enable", nil)
-		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
-		}
+		// Browser.enable was already called during foxbridge startup.
+		// Just return success — targets are auto-discovered.
 		return json.RawMessage(`{}`), nil
 
 	case "Target.createTarget":
@@ -28,9 +25,6 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		}
 
 		jugglerParams := map[string]interface{}{}
-		if params.URL != "" {
-			jugglerParams["url"] = params.URL
-		}
 		if params.BrowserContextID != "" {
 			jugglerParams["browserContextId"] = params.BrowserContextID
 		}
@@ -164,8 +158,11 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		return json.RawMessage(`{}`), nil
 
 	case "Target.getBrowserContexts":
-		// Return list of browser context IDs
+		// Return list of browser context IDs — must be an array, never null
 		contexts := b.sessions.GetBrowserContexts()
+		if contexts == nil {
+			contexts = []string{}
+		}
 		return marshalResult(map[string]interface{}{"browserContextIds": contexts})
 
 	case "Target.getTargetInfo":
