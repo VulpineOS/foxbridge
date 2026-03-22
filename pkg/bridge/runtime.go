@@ -233,32 +233,14 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					b.lastQueryAll[msg.SessionID] = isAll
 					b.lastQueryMu.Unlock()
 
+					// For $$eval, skip 3 plumbing calls (iterator + collector + mapper)
+					// For $eval, skip 0
+					skips := 0
 					if isAll {
-						// For $$eval, return a REAL empty array from evaluate
-						// so Puppeteer can iterate it without crashing
-						b.lastQueryMu.Lock()
-						delete(b.lastQuery, msg.SessionID)
-						delete(b.lastQueryAll, msg.SessionID)
-						b.lastQueryMu.Unlock()
-
-						evalP := map[string]interface{}{
-							"expression":    "[]",
-							"returnByValue": false,
-						}
-						if latest := b.latestContextForSession(msg.SessionID); latest != "" {
-							evalP["executionContextId"] = latest
-						}
-						result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalP)
-						if err != nil {
-							return marshalResult(map[string]interface{}{
-								"result": map[string]interface{}{"type": "object"},
-							})
-						}
-						return result, nil
+						skips = 3
 					}
-
 					b.lastQueryMu.Lock()
-					b.lastQuerySkips[msg.SessionID] = 0
+					b.lastQuerySkips[msg.SessionID] = skips
 					b.lastQueryMu.Unlock()
 
 					return marshalResult(map[string]interface{}{
