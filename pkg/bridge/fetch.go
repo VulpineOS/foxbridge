@@ -151,6 +151,40 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		}
 		return json.RawMessage(`{}`), nil
 
+	case "Fetch.continueWithAuth":
+		var params struct {
+			RequestID string `json:"requestId"`
+			AuthChallengeResponse struct {
+				Response string `json:"response"` // "Default", "CancelAuth", "ProvideCredentials"
+				Username string `json:"username"`
+				Password string `json:"password"`
+			} `json:"authChallengeResponse"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		jugglerParams := map[string]interface{}{
+			"requestId": params.RequestID,
+		}
+
+		switch params.AuthChallengeResponse.Response {
+		case "ProvideCredentials":
+			jugglerParams["action"] = "provideCredentials"
+			jugglerParams["username"] = params.AuthChallengeResponse.Username
+			jugglerParams["password"] = params.AuthChallengeResponse.Password
+		case "CancelAuth":
+			jugglerParams["action"] = "cancel"
+		default:
+			jugglerParams["action"] = "default"
+		}
+
+		_, err := b.callJuggler("", "Browser.handleAuthRequest", jugglerParams)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return json.RawMessage(`{}`), nil
+
 	case "Fetch.getResponseBody":
 		var params struct {
 			RequestID string `json:"requestId"`

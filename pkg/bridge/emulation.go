@@ -195,6 +195,26 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 	case "Emulation.setDefaultBackgroundColorOverride":
 		return json.RawMessage(`{}`), nil
 
+	case "Emulation.setScriptExecutionDisabled":
+		var params struct {
+			Value bool `json:"value"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		// Use Runtime.evaluate to toggle JavaScript on the page
+		// Juggler doesn't have a direct equivalent, but we can use the docShell
+		_, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
+			"expression":    fmt.Sprintf(`void(document.docShell && (document.docShell.allowJavascript = %v))`, !params.Value),
+			"returnByValue": true,
+		})
+		if err != nil {
+			// Not all pages support docShell access — return success anyway
+			return json.RawMessage(`{}`), nil
+		}
+		return json.RawMessage(`{}`), nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}

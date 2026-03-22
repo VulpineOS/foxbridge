@@ -642,6 +642,39 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			},
 		})
 
+	case "Page.setDownloadBehavior":
+		var params struct {
+			Behavior     string `json:"behavior"` // "deny", "allow", "allowAndName", "default"
+			DownloadPath string `json:"downloadPath"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		if params.Behavior == "allow" || params.Behavior == "allowAndName" {
+			jugglerParams := map[string]interface{}{
+				"downloadPath": params.DownloadPath,
+			}
+			if msg.SessionID != "" {
+				if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
+					jugglerParams["browserContextId"] = info.BrowserContextID
+				}
+			}
+			b.callJuggler("", "Browser.setDownloadOptions", jugglerParams)
+		}
+		return json.RawMessage(`{}`), nil
+
+	case "Browser.setDownloadBehavior":
+		// Same as Page.setDownloadBehavior — some clients use the Browser domain version
+		var params struct {
+			Behavior     string `json:"behavior"`
+			DownloadPath string `json:"downloadPath"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+		return json.RawMessage(`{}`), nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
