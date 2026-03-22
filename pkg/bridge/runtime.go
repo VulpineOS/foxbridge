@@ -147,6 +147,15 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		funcDecl := params.FunctionDeclaration
 
+		// Strip //# sourceURL= comments that Puppeteer appends to function declarations.
+		// These break SpiderMonkey's async wrapper when the comment is inside grouping parens.
+		if idx := strings.Index(funcDecl, "\n//# sourceURL="); idx >= 0 {
+			funcDecl = funcDecl[:idx]
+		}
+		if idx := strings.Index(funcDecl, "\n//@ sourceURL="); idx >= 0 {
+			funcDecl = funcDecl[:idx]
+		}
+
 		// Intercept Puppeteer's cssQuerySelector pattern and replace with direct querySelector.
 		// Puppeteer sends: (element, selector, {cssQuerySelector}) => cssQuerySelector(element, selector)
 		// The helper objectId becomes stale after navigation. Replace with native querySelector.
@@ -164,42 +173,21 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					} else {
 						funcDecl = fmt.Sprintf(`function(element) { return element.querySelector(%q); }`, selectorArg.Value)
 					}
-					// Only keep the element arg, drop selector and stale helper
 					params.Arguments = mustMarshal([]interface{}{json.RawMessage(args[0])})
-					params.AwaitPromise = false // direct querySelector doesn't return a promise
+					params.AwaitPromise = false
 				}
 			}
 		}
 
 		// If awaitPromise, wrap the function to await its result
 		if params.AwaitPromise {
-			funcDecl = fmt.Sprintf(`async function(...args) { return await (%s).apply(this, args) }`, funcDecl)
+			funcDecl = fmt.Sprintf(`async function(...args) { return await (%s).apply(null, args) }`, funcDecl)
 		}
 
-		// Juggler callFunction accepts: executionContextId, functionDeclaration, returnByValue, args, objectId
-		jugglerParams := map[string]interface{}{
-			"functionDeclaration": funcDecl,
-			"returnByValue":      params.ReturnByValue,
-		}
-
-		// Juggler ALWAYS requires executionContextId (unlike Chrome which infers from objectId).
-		// Use the latest main world context — Juggler doesn't have real isolated worlds.
-		latest := b.latestContextForSession(msg.SessionID)
-		if latest != "" {
-			jugglerParams["executionContextId"] = latest
-		} else if execCtxID != "" {
-			jugglerParams["executionContextId"] = execCtxID
-		}
-
-		// Also set objectId as executionContextId hint — if the function is called ON an object,
-		// Juggler needs the context that owns it. Since we map everything to the main world,
-		// the latest context is correct. But we need to make sure args with objectIds also
-		// reference objects in this same context.
-		// Rewrite any argument objectIds that look like they're from a stale/isolated context
-		// by NOT changing them — Juggler objects are valid as long as the context exists.
+		// Handle objectId-as-this: Juggler doesn't support objectId for `this` binding.
+		// Prepend objectId as first argument and wrap function to use it as `this` or first arg.
+		finalArgs := params.Arguments
 		if params.ObjectID != "" {
-			// Juggler's callFunction doesn't support objectId as `this` binding.
-			// Prepend objectId as the first argument and wrap the function to use it as `this`.
 			var existingArgs []json.RawMessage
 			if params.Arguments != nil {
 				json.Unmarshal(params.Arguments, &existingArgs)
@@ -208,15 +196,34 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			objArg, _ := json.Marshal(map[string]string{"objectId": params.ObjectID})
 			newArgs = append(newArgs, objArg)
 			newArgs = append(newArgs, existingArgs...)
-			jugglerParams["args"] = newArgs
+			finalArgs = mustMarshal(newArgs)
 
-			// Wrap: pass the object as first arg. Use .call for regular functions, direct arg for arrow functions.
+			// Wrap: pass the object as first arg
 			funcDecl = fmt.Sprintf(`function(__this__, ...args) { const fn = %s; if (fn.prototype) { return fn.call(__this__, ...args); } else { return fn(__this__, ...args); } }`, funcDecl)
-		} else if params.Arguments != nil {
-			jugglerParams["args"] = params.Arguments
 		}
 
+		// Build Juggler params AFTER all funcDecl transformations
+		jugglerParams := map[string]interface{}{
+			"functionDeclaration": funcDecl,
+			"returnByValue":      params.ReturnByValue,
+		}
+
+		// Juggler ALWAYS requires executionContextId
+		latest := b.latestContextForSession(msg.SessionID)
+		if latest != "" {
+			jugglerParams["executionContextId"] = latest
+		} else if execCtxID != "" {
+			jugglerParams["executionContextId"] = execCtxID
+		}
+
+		if finalArgs != nil {
+			jugglerParams["args"] = json.RawMessage(finalArgs)
+		}
+
+		jpJSON, _ := json.Marshal(jugglerParams)
+		log.Printf("[runtime] callFunction FINAL juggler: %s", string(jpJSON)[:min(len(jpJSON), 500)])
 		result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", jugglerParams)
+		log.Printf("[runtime] callFunction result: %s err=%v", string(result)[:min(len(result), 300)], err)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}

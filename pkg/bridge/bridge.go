@@ -29,6 +29,9 @@ type Bridge struct {
 	// isolatedWorlds tracks isolated world names per CDP session for re-emission after navigation
 	isolatedWorldsMu sync.RWMutex
 	isolatedWorlds   map[string][]isolatedWorldInfo // cdpSessionID → list of isolated worlds
+	// nodeObjects maps backendNodeId → objectId for DOM.describeNode/resolveNode round-trips
+	nodeObjectsMu sync.RWMutex
+	nodeObjects   map[int]string // backendNodeId → objectId
 }
 
 // New creates a new Bridge.
@@ -43,6 +46,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		loaderMap:      make(map[string]string),
 		latestCtx:      make(map[string]string),
 		isolatedWorlds: make(map[string][]isolatedWorldInfo),
+		nodeObjects:    make(map[int]string),
 	}
 }
 

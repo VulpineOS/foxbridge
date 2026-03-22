@@ -191,6 +191,17 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			json.Unmarshal(msg.Params, &params)
 		}
 
+		// Assign a unique backendNodeId and store the objectId mapping
+		// so DOM.resolveNode can return the original object later
+		if params.BackendNodeID == 0 {
+			params.BackendNodeID = b.nextCtxID() // reuse counter for unique IDs
+		}
+		if params.ObjectID != "" {
+			b.nodeObjectsMu.Lock()
+			b.nodeObjects[params.BackendNodeID] = params.ObjectID
+			b.nodeObjectsMu.Unlock()
+		}
+
 		// If we have an objectId, get info via Runtime.callFunction
 		if params.ObjectID != "" {
 			expr := `function() {
@@ -281,14 +292,28 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			json.Unmarshal(msg.Params, &params)
 		}
 
-		// Resolve to a real Juggler object by evaluating document/documentElement.
-		// We evaluate WITHOUT returnByValue to get an objectId reference.
+		// Check if we have a stored objectId from a previous DOM.describeNode call.
+		// This ensures resolveNode returns the SAME element, not just `document`.
+		b.nodeObjectsMu.RLock()
+		storedObjectID := b.nodeObjects[params.BackendNodeID]
+		b.nodeObjectsMu.RUnlock()
+
+		if storedObjectID != "" {
+			return marshalResult(map[string]interface{}{
+				"object": map[string]interface{}{
+					"type":     "object",
+					"subtype":  "node",
+					"objectId": storedObjectID,
+				},
+			})
+		}
+
+		// No stored objectId — evaluate document as fallback
 		expr := "document"
 		if params.NodeID == 2 || params.BackendNodeID == 2 {
 			expr = "document.documentElement"
 		}
 
-		// Try to evaluate in the latest context
 		execCtx := b.latestContextForSession(msg.SessionID)
 		evalParams := map[string]interface{}{
 			"expression":    expr,
@@ -298,37 +323,25 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			evalParams["executionContextId"] = execCtx
 		}
 		result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalParams)
-		if err != nil {
-			// Fallback to fake objectId
-			return marshalResult(map[string]interface{}{
-				"object": map[string]interface{}{
-					"type":     "object",
-					"subtype":  "node",
-					"objectId": fmt.Sprintf("node-%d", params.NodeID),
-				},
-			})
+		if err == nil {
+			var evalResult struct {
+				Result struct {
+					ObjectID string `json:"objectId"`
+					Type     string `json:"type"`
+				} `json:"result"`
+			}
+			json.Unmarshal(result, &evalResult)
+			if evalResult.Result.ObjectID != "" {
+				return marshalResult(map[string]interface{}{
+					"object": map[string]interface{}{
+						"type":     evalResult.Result.Type,
+						"subtype":  "node",
+						"objectId": evalResult.Result.ObjectID,
+					},
+				})
+			}
 		}
 
-		// Extract the objectId from the evaluate result
-		var evalResult struct {
-			Result struct {
-				ObjectID string `json:"objectId"`
-				Type     string `json:"type"`
-			} `json:"result"`
-		}
-		json.Unmarshal(result, &evalResult)
-
-		if evalResult.Result.ObjectID != "" {
-			return marshalResult(map[string]interface{}{
-				"object": map[string]interface{}{
-					"type":     evalResult.Result.Type,
-					"subtype":  "node",
-					"objectId": evalResult.Result.ObjectID,
-				},
-			})
-		}
-
-		// Fallback
 		return marshalResult(map[string]interface{}{
 			"object": map[string]interface{}{
 				"type":     "object",

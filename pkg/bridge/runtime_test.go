@@ -175,7 +175,7 @@ func TestHandleRuntime_CallFunctionOn_AwaitPromise(t *testing.T) {
 	var p map[string]interface{}
 	json.Unmarshal(last.Params, &p)
 	funcDecl, _ := p["functionDeclaration"].(string)
-	if funcDecl != `async function(...args) { return await (function(){return fetch('/')}).apply(this, args) }` {
+	if funcDecl != `async function(...args) { return await (function(){return fetch('/')}).apply(null, args) }` {
 		t.Errorf("functionDeclaration = %q, want async-wrapped", funcDecl)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
@@ -363,6 +364,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				FrameID string `json:"frameId"`
 				Name    string `json:"name"`
 			} `json:"auxData"`
+			Origin string `json:"origin"`
 		}
 		json.Unmarshal(params, &ev)
 
@@ -387,7 +389,8 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.ctxMap[ctxID] = ev.ExecutionContextID
 		b.ctxMapMu.Unlock()
 
-		// Track the latest context for this session (used for stale context fallback)
+		// Always track the latest context. Juggler creates/destroys contexts rapidly
+		// during navigation — only the last surviving one matters.
 		b.latestCtxMu.Lock()
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
