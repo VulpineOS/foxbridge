@@ -392,6 +392,33 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
 
+		// Re-emit isolated world contexts after navigation (Puppeteer expects them)
+		if cdpSessionID != "" {
+			b.isolatedWorldsMu.RLock()
+			worlds := b.isolatedWorlds[cdpSessionID]
+			b.isolatedWorldsMu.RUnlock()
+			for _, w := range worlds {
+				isoCtxID := b.nextCtxID()
+				b.ctxMapMu.Lock()
+				b.ctxMap[isoCtxID] = ev.ExecutionContextID // map to same Juggler context
+				b.ctxMapMu.Unlock()
+
+				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+					"context": map[string]interface{}{
+						"id":       isoCtxID,
+						"origin":   "",
+						"name":     w.WorldName,
+						"uniqueId": fmt.Sprintf("isolated-%s-%s-%d", w.FrameID, w.WorldName, isoCtxID),
+						"auxData": map[string]interface{}{
+							"isDefault": false,
+							"type":      "isolated",
+							"frameId":   ev.AuxData.FrameID,
+						},
+					},
+				}, cdpSessionID)
+			}
+		}
+
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
 				"id":       ctxID,

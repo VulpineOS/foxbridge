@@ -151,34 +151,21 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"returnByValue":      params.ReturnByValue,
 		}
 
-		// Check if arguments contain object references (objectId).
-		// If so, execute in the context that owns those objects, not the specified context.
-		// This handles cross-world calls like $eval where Puppeteer passes objects from
-		// the main world to the isolated world.
-		hasObjectArgs := false
-		if params.Arguments != nil {
-			var args []map[string]interface{}
-			if json.Unmarshal(params.Arguments, &args) == nil {
-				for _, arg := range args {
-					if _, ok := arg["objectId"]; ok {
-						hasObjectArgs = true
-						break
-					}
-				}
-			}
-		}
-
-		if hasObjectArgs {
-			// Use the LATEST (main world) context — object args live there
-			latest := b.latestContextForSession(msg.SessionID)
-			if latest != "" {
-				jugglerParams["executionContextId"] = latest
-			} else if execCtxID != "" {
-				jugglerParams["executionContextId"] = execCtxID
-			}
+		// Juggler ALWAYS requires executionContextId (unlike Chrome which infers from objectId).
+		// Use the latest main world context — Juggler doesn't have real isolated worlds.
+		latest := b.latestContextForSession(msg.SessionID)
+		if latest != "" {
+			jugglerParams["executionContextId"] = latest
 		} else if execCtxID != "" {
 			jugglerParams["executionContextId"] = execCtxID
 		}
+
+		// Also set objectId as executionContextId hint — if the function is called ON an object,
+		// Juggler needs the context that owns it. Since we map everything to the main world,
+		// the latest context is correct. But we need to make sure args with objectIds also
+		// reference objects in this same context.
+		// Rewrite any argument objectIds that look like they're from a stale/isolated context
+		// by NOT changing them — Juggler objects are valid as long as the context exists.
 		if params.ObjectID != "" {
 			jugglerParams["objectId"] = params.ObjectID
 		}
@@ -201,9 +188,13 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
-		_, err := b.callJuggler(msg.SessionID, "Runtime.disposeObject", map[string]string{
+		disposeParams := map[string]interface{}{
 			"objectId": params.ObjectID,
-		})
+		}
+		if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+			disposeParams["executionContextId"] = latest
+		}
+		_, err := b.callJuggler(msg.SessionID, "Runtime.disposeObject", disposeParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
@@ -221,9 +212,14 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
-		result, err := b.callJuggler(msg.SessionID, "Runtime.getObjectProperties", map[string]string{
+		getPropsParams := map[string]interface{}{
 			"objectId": params.ObjectID,
-		})
+		}
+		latest := b.latestContextForSession(msg.SessionID)
+		if latest != "" {
+			getPropsParams["executionContextId"] = latest
+		}
+		result, err := b.callJuggler(msg.SessionID, "Runtime.getObjectProperties", getPropsParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}

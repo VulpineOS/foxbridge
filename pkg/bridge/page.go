@@ -319,6 +319,14 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 		uniqueID := fmt.Sprintf("isolated-%s-%s", params.FrameID, params.WorldName)
 
+		// Record this isolated world for re-emission after navigation
+		b.isolatedWorldsMu.Lock()
+		b.isolatedWorlds[msg.SessionID] = append(b.isolatedWorlds[msg.SessionID], isolatedWorldInfo{
+			WorldName: params.WorldName,
+			FrameID:   params.FrameID,
+		})
+		b.isolatedWorldsMu.Unlock()
+
 		// Emit Runtime.executionContextCreated so Puppeteer registers this world
 		go func() {
 			b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{

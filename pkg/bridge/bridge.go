@@ -26,6 +26,9 @@ type Bridge struct {
 	// latestCtx tracks the most recent Juggler execution context per session
 	latestCtxMu sync.RWMutex
 	latestCtx   map[string]string // jugglerSessionID → latest executionContextId
+	// isolatedWorlds tracks isolated world names per CDP session for re-emission after navigation
+	isolatedWorldsMu sync.RWMutex
+	isolatedWorlds   map[string][]isolatedWorldInfo // cdpSessionID → list of isolated worlds
 }
 
 // New creates a new Bridge.
@@ -35,10 +38,11 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		sessions:   sessions,
 		server:     server,
 		autoAttach: newAutoAttachState(),
-		ctxMap:     make(map[int]string),
-		ctxCounter: 100,
-		loaderMap:  make(map[string]string),
-		latestCtx:  make(map[string]string),
+		ctxMap:         make(map[int]string),
+		ctxCounter:     100,
+		loaderMap:      make(map[string]string),
+		latestCtx:      make(map[string]string),
+		isolatedWorlds: make(map[string][]isolatedWorldInfo),
 	}
 }
 
@@ -124,6 +128,12 @@ func (b *Bridge) nextCtxID() int {
 	id := b.ctxCounter
 	b.ctxMapMu.Unlock()
 	return id
+}
+
+// isolatedWorldInfo tracks an isolated world for re-emission after navigation.
+type isolatedWorldInfo struct {
+	WorldName string
+	FrameID   string
 }
 
 // latestContextForSession returns the most recent Juggler execution context for a CDP session.
