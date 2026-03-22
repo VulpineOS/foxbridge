@@ -173,6 +173,10 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"width":  params.Clip.Width,
 				"height": params.Clip.Height,
 			}
+		} else {
+			jugglerParams["clip"] = map[string]interface{}{
+				"x": 0, "y": 0, "width": 1280, "height": 720,
+			}
 		}
 		if params.CaptureBeyondViewport {
 			jugglerParams["fullPage"] = true
