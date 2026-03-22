@@ -32,10 +32,21 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			jugglerParams["longitude"] = *params.Longitude
 		}
 		if params.Accuracy != nil {
-			jugglerParams["accuracy"] = *params.Accuracy
+			acc := *params.Accuracy
+			if acc <= 0 {
+				acc = 1
+			}
+			jugglerParams["accuracy"] = acc
 		}
 
+		// If no browserContextId was resolved, try calling without it.
+		// Some Juggler builds require it, others accept it omitted for the default context.
 		_, err := b.callJuggler("", "Browser.setGeolocationOverride", jugglerParams)
+		if err != nil && jugglerParams["browserContextId"] == nil {
+			// Retry with empty string browserContextId as fallback
+			jugglerParams["browserContextId"] = ""
+			_, err = b.callJuggler("", "Browser.setGeolocationOverride", jugglerParams)
+		}
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}

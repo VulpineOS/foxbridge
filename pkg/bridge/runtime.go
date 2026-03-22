@@ -273,12 +273,31 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"returnByValue":      params.ReturnByValue,
 		}
 
-		// Juggler ALWAYS requires executionContextId
-		latest := b.latestContextForSession(msg.SessionID)
-		if latest != "" {
-			jugglerParams["executionContextId"] = latest
-		} else if execCtxID != "" {
-			jugglerParams["executionContextId"] = execCtxID
+		// Juggler ALWAYS requires executionContextId.
+		// When arguments contain objectIds, the objects are bound to a specific context.
+		// Using the latest context would cause "JSHandles can be evaluated only in the
+		// context they were created" errors. Honor the caller's requested context instead.
+		hasObjectIdArgs := false
+		if finalArgs != nil {
+			hasObjectIdArgs = strings.Contains(string(finalArgs), `"objectId"`)
+		}
+		if hasObjectIdArgs || params.ObjectID != "" {
+			// Use the caller-specified context (from Puppeteer), or fall back to execCtxID
+			if execCtxID != "" {
+				jugglerParams["executionContextId"] = execCtxID
+			} else {
+				// Last resort — use latest context
+				if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+					jugglerParams["executionContextId"] = latest
+				}
+			}
+		} else {
+			latest := b.latestContextForSession(msg.SessionID)
+			if latest != "" {
+				jugglerParams["executionContextId"] = latest
+			} else if execCtxID != "" {
+				jugglerParams["executionContextId"] = execCtxID
+			}
 		}
 
 		if finalArgs != nil {

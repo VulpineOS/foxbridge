@@ -709,11 +709,31 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
+		// Browser.requestIntercepted is a browser-level event (no juggler session ID).
+		// Resolve the CDP session from the frameId so Puppeteer receives it on the page session.
+		if cdpSessionID == "" && ev.FrameID != "" {
+			if info, ok := b.sessions.GetByFrameID(ev.FrameID); ok {
+				cdpSessionID = info.SessionID
+			}
+		}
+
+		// Last resort: find any page session to deliver the event
+		if cdpSessionID == "" {
+			for _, info := range b.sessions.All() {
+				if info.Type == "page" {
+					cdpSessionID = info.SessionID
+					break
+				}
+			}
+		}
+
 		// Determine resource type from navigation flag
 		resourceType := "Other"
 		if ev.IsNavigationRequest {
 			resourceType = "Document"
 		}
+
+		log.Printf("[event] Browser.requestIntercepted → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, ev.Request.URL, cdpSessionID)
 
 		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
 			"requestId": ev.RequestID,

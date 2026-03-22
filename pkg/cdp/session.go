@@ -79,6 +79,18 @@ func (sm *SessionManager) GetByJugglerSession(jugglerSessionID string) (*Session
 	return info, ok
 }
 
+// GetByFrameID returns the first page session matching the given frame ID.
+func (sm *SessionManager) GetByFrameID(frameID string) (*SessionInfo, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	for _, info := range sm.sessions {
+		if info.FrameID == frameID && info.Type == "page" {
+			return info, true
+		}
+	}
+	return nil, false
+}
+
 // All returns all sessions.
 func (sm *SessionManager) All() []*SessionInfo {
 	sm.mu.RLock()
