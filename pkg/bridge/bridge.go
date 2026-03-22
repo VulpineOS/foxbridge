@@ -32,6 +32,11 @@ type Bridge struct {
 	// nodeObjects maps backendNodeId → objectId for DOM.describeNode/resolveNode round-trips
 	nodeObjectsMu sync.RWMutex
 	nodeObjects   map[int]string // backendNodeId → objectId
+	// lastQuerySelector tracks the last intercepted CSS selector per session
+	// so we can combine querySelector + userFn into a single evaluate for $eval
+	lastQueryMu    sync.RWMutex
+	lastQuery      map[string]string // cdpSessionID → CSS selector
+	lastQueryAll   map[string]bool   // cdpSessionID → true if querySelectorAll
 }
 
 // New creates a new Bridge.
@@ -47,6 +52,8 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		latestCtx:      make(map[string]string),
 		isolatedWorlds: make(map[string][]isolatedWorldInfo),
 		nodeObjects:    make(map[int]string),
+		lastQuery:      make(map[string]string),
+		lastQueryAll:   make(map[string]bool),
 	}
 }
 

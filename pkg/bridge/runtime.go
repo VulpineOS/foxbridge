@@ -156,9 +156,45 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			funcDecl = funcDecl[:idx]
 		}
 
-		// Intercept Puppeteer's cssQuerySelector pattern and replace with direct querySelector.
-		// Puppeteer sends: (element, selector, {cssQuerySelector}) => cssQuerySelector(element, selector)
-		// The helper objectId becomes stale after navigation. Replace with native querySelector.
+		// Check if there's a pending $eval selector — if so, combine querySelector + userFn
+		// into a single evaluate to avoid Juggler's object lifecycle issues.
+		b.lastQueryMu.RLock()
+		pendingSelector := b.lastQuery[msg.SessionID]
+		pendingAll := b.lastQueryAll[msg.SessionID]
+		b.lastQueryMu.RUnlock()
+
+		if pendingSelector != "" && !strings.Contains(funcDecl, "cssQuerySelector") {
+			// This is the user's function for $eval — combine with the stored selector
+			b.lastQueryMu.Lock()
+			delete(b.lastQuery, msg.SessionID)
+			delete(b.lastQueryAll, msg.SessionID)
+			b.lastQueryMu.Unlock()
+
+			log.Printf("[runtime] combining $eval: selector=%q fn=%s", pendingSelector, funcDecl[:min(len(funcDecl), 60)])
+
+			var expr string
+			if pendingAll {
+				expr = fmt.Sprintf(`(function() { const els = document.querySelectorAll(%q); return (%s)(Array.from(els)); })()`, pendingSelector, funcDecl)
+			} else {
+				expr = fmt.Sprintf(`(function() { const el = document.querySelector(%q); return (%s)(el); })()`, pendingSelector, funcDecl)
+			}
+
+			evalParams := map[string]interface{}{
+				"expression":    expr,
+				"returnByValue": params.ReturnByValue,
+			}
+			if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+				evalParams["executionContextId"] = latest
+			}
+			result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalParams)
+			if err != nil {
+				return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			}
+			return result, nil
+		}
+
+		// Intercept Puppeteer's cssQuerySelector pattern — store the selector for the
+		// NEXT callFunctionOn which will be the user's function ($eval pattern).
 		if strings.Contains(funcDecl, "cssQuerySelector") && params.Arguments != nil {
 			var args []json.RawMessage
 			if json.Unmarshal(params.Arguments, &args) == nil && len(args) >= 2 {
@@ -167,21 +203,23 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 				}
 				json.Unmarshal(args[1], &selectorArg)
 				if selectorArg.Value != "" {
-					log.Printf("[runtime] intercepting cssQuerySelector for %q", selectorArg.Value)
-					if strings.Contains(funcDecl, "cssQuerySelectorAll") {
-						funcDecl = fmt.Sprintf(`function(element) { return element.querySelectorAll(%q); }`, selectorArg.Value)
-					} else {
-						funcDecl = fmt.Sprintf(`function(element) { return element.querySelector(%q); }`, selectorArg.Value)
-					}
-					params.Arguments = mustMarshal([]interface{}{json.RawMessage(args[0])})
-					params.AwaitPromise = false
+					isAll := strings.Contains(funcDecl, "cssQuerySelectorAll")
+					log.Printf("[runtime] storing $eval selector %q (all=%v) for next callFunctionOn", selectorArg.Value, isAll)
+
+					b.lastQueryMu.Lock()
+					b.lastQuery[msg.SessionID] = selectorArg.Value
+					b.lastQueryAll[msg.SessionID] = isAll
+					b.lastQueryMu.Unlock()
+
+					// Return a dummy element handle — the actual selector will be used in the combined call
+					return marshalResult(map[string]interface{}{
+						"result": map[string]interface{}{
+							"type":    "object",
+							"subtype": "node",
+						},
+					})
 				}
 			}
-		}
-
-		// If awaitPromise, wrap the function to await its result
-		if params.AwaitPromise {
-			funcDecl = fmt.Sprintf(`async function(...args) { return await (%s).apply(null, args) }`, funcDecl)
 		}
 
 		// Handle objectId-as-this: Juggler doesn't support objectId for `this` binding.
@@ -220,10 +258,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			jugglerParams["args"] = json.RawMessage(finalArgs)
 		}
 
-		jpJSON, _ := json.Marshal(jugglerParams)
-		log.Printf("[runtime] callFunction FINAL juggler: %s", string(jpJSON)[:min(len(jpJSON), 500)])
 		result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", jugglerParams)
-		log.Printf("[runtime] callFunction result: %s err=%v", string(result)[:min(len(result), 300)], err)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
