@@ -121,8 +121,8 @@ func TestHandleRuntime_CallFunctionOn(t *testing.T) {
 		{
 			name:       "basic function",
 			params:     `{"functionDeclaration":"function(){return 1}","objectId":"obj-1","returnByValue":true}`,
-			checkKey:   "objectId",
-			checkValue: "obj-1",
+			checkKey:   "returnByValue",
+			checkValue: true,
 		},
 		{
 			name:       "with arguments",
