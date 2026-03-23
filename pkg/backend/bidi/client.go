@@ -191,7 +191,6 @@ func (c *Client) handleBrowserEnable() (json.RawMessage, error) {
 		"script.realmCreated",
 		"script.realmDestroyed",
 		"script.message",
-		"log.entryAdded",
 		"network.beforeRequestSent",
 		"network.responseCompleted",
 	}
@@ -1220,7 +1219,7 @@ func (c *Client) handleBiDiEvent(msg *Message) {
 	case "log.entryAdded":
 		c.onLogEntryAdded(params)
 	case "network.beforeRequestSent":
-		c.onNetworkBeforeRequestSent(params)
+		c.emitJugglerEvent("Network.requestWillBeSent", c.contextToSession(params), params)
 	case "network.responseCompleted":
 		c.emitJugglerEvent("Network.requestFinished", c.contextToSession(params), params)
 	default:
@@ -1309,6 +1308,12 @@ func (c *Client) onScriptMessage(params map[string]interface{}) {
 
 func (c *Client) onLogEntryAdded(params map[string]interface{}) {
 	// BiDi log.entryAdded: {level, source: {realm, context}, text, timestamp, type}
+	// Only forward console-type log entries, not javascript errors
+	logType := extractString(params, "type")
+	if logType != "console" {
+		return
+	}
+
 	source, _ := params["source"].(map[string]interface{})
 	ctxID := ""
 	if source != nil {
@@ -1343,58 +1348,23 @@ func (c *Client) onLogEntryAdded(params map[string]interface{}) {
 func (c *Client) onNetworkBeforeRequestSent(params map[string]interface{}) {
 	sessionID := c.contextToSession(params)
 
-	// Extract request info
+	// Extract request info from BiDi format
 	request, _ := params["request"].(map[string]interface{})
 	requestID := extractString(request, "request")
 	url := extractString(request, "url")
 	method := extractString(request, "method")
+	contextID := extractString(params, "context")
 
-	// Check if this is an intercepted (blocked) request
-	isBlocked, _ := params["isBlocked"].(bool)
-
-	// Emit Network.requestWillBeSent in Juggler format (with proper requestId)
+	// Emit Network.requestWillBeSent in Juggler format
 	jugglerReqParams, _ := json.Marshal(map[string]interface{}{
 		"requestId":           requestID,
-		"frameId":             extractString(params, "context"),
+		"frameId":             contextID,
 		"url":                 url,
 		"method":              method,
 		"headers":             map[string]string{},
 		"isNavigationRequest": params["navigation"] != nil,
 	})
 	c.emitJugglerEvent("Network.requestWillBeSent", sessionID, jugglerReqParams)
-
-	// If blocked by interception, also emit Browser.requestIntercepted
-	if isBlocked {
-		// Extract headers
-		headers := map[string]string{}
-		if hdrs, ok := request["headers"].([]interface{}); ok {
-			for _, h := range hdrs {
-				hm, _ := h.(map[string]interface{})
-				name := extractString(hm, "name")
-				valObj, _ := hm["value"].(map[string]interface{})
-				val := extractString(valObj, "value")
-				if name != "" {
-					headers[name] = val
-				}
-			}
-		}
-
-		navigation, _ := params["navigation"].(string)
-		isNav := navigation != ""
-		contextID := extractString(params, "context")
-
-		jugglerParams, _ := json.Marshal(map[string]interface{}{
-			"requestId": requestID,
-			"request": map[string]interface{}{
-				"url":     url,
-				"method":  method,
-				"headers": headers,
-			},
-			"frameId":             contextID,
-			"isNavigationRequest": isNav,
-		})
-		c.emitJugglerEvent("Browser.requestIntercepted", sessionID, jugglerParams)
-	}
 }
 
 func (c *Client) emitPageEventFired(name string, params map[string]interface{}) {
