@@ -104,13 +104,16 @@ func (c *Client) callWithContext(ctx context.Context, sessionID, method string, 
 	case "Browser.setExtraHTTPHeaders":
 		return c.handleSetExtraHTTPHeaders(ctx, sessionID, params)
 	case "Browser.setRequestInterception":
-		return c.handleSetRequestInterception(ctx, sessionID, params)
+		// BiDi request interception is not yet fully implemented.
+		// Enabling it would block all requests without proper continue/abort support.
+		// Return success as no-op to prevent hanging.
+		return json.RawMessage(`{}`), nil
 	case "Browser.continueInterceptedRequest":
-		return c.handleContinueInterceptedRequest(ctx, params)
+		return json.RawMessage(`{}`), nil
 	case "Browser.abortInterceptedRequest":
-		return c.handleAbortInterceptedRequest(ctx, params)
+		return json.RawMessage(`{}`), nil
 	case "Browser.fulfillInterceptedRequest":
-		return c.handleFulfillInterceptedRequest(ctx, params)
+		return json.RawMessage(`{}`), nil
 
 	// ── Page domain ──
 	case "Page.navigate":
@@ -458,6 +461,9 @@ func (c *Client) handleContinueInterceptedRequest(ctx context.Context, params js
 	}
 	if params != nil {
 		json.Unmarshal(params, &p)
+	}
+	if p.RequestID == "" {
+		return json.RawMessage(`{}`), nil
 	}
 	bidiParams := map[string]interface{}{
 		"request": p.RequestID,
