@@ -57,10 +57,7 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			buttonNum = 2
 		}
 		jugglerParams["button"] = buttonNum
-		if params.ClickCount > 0 {
-			jugglerParams["clickCount"] = params.ClickCount
-		}
-		// Juggler requires modifiers even when 0
+		jugglerParams["clickCount"] = params.ClickCount
 		jugglerParams["modifiers"] = params.Modifiers
 		if params.DeltaX != 0 {
 			jugglerParams["deltaX"] = params.DeltaX
