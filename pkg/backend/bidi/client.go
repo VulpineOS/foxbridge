@@ -34,10 +34,11 @@ type Client struct {
 	closeOnce sync.Once
 
 	// BiDi state
-	contextMap map[string]string // juggler sessionID → BiDi browsing context ID
-	realmMap   map[string]string // BiDi realm ID → BiDi browsing context ID
-	contextMu  sync.RWMutex
-	subscribed bool
+	contextMap   map[string]string // juggler sessionID → BiDi browsing context ID
+	realmMap     map[string]string // BiDi realm ID → BiDi browsing context ID
+	contextMu    sync.RWMutex
+	subscribed   bool
+	interceptIDs []string // BiDi intercept IDs for cleanup
 }
 
 // NewClient creates a BiDi client over the given WebSocket transport.
@@ -104,6 +105,12 @@ func (c *Client) callWithContext(ctx context.Context, sessionID, method string, 
 		return c.handleSetExtraHTTPHeaders(ctx, sessionID, params)
 	case "Browser.setRequestInterception":
 		return c.handleSetRequestInterception(ctx, sessionID, params)
+	case "Browser.continueInterceptedRequest":
+		return c.handleContinueInterceptedRequest(ctx, params)
+	case "Browser.abortInterceptedRequest":
+		return c.handleAbortInterceptedRequest(ctx, params)
+	case "Browser.fulfillInterceptedRequest":
+		return c.handleFulfillInterceptedRequest(ctx, params)
 
 	// ── Page domain ──
 	case "Page.navigate":
@@ -410,13 +417,114 @@ func (c *Client) handleSetRequestInterception(ctx context.Context, sessionID str
 
 	if p.Enabled {
 		bidiParams, _ := json.Marshal(map[string]interface{}{
-			"phases":  []string{"beforeRequestSent"},
-			"urlPatterns": []map[string]string{{"type": "pattern", "pattern": "*"}},
+			"phases": []string{"beforeRequestSent"},
 		})
-		return c.sendBiDi(ctx, "network.addIntercept", bidiParams)
+		result, err := c.sendBiDi(ctx, "network.addIntercept", bidiParams)
+		if err != nil {
+			return nil, err
+		}
+		// Store intercept ID for later removal
+		var resp struct {
+			Intercept string `json:"intercept"`
+		}
+		json.Unmarshal(result, &resp)
+		if resp.Intercept != "" {
+			c.contextMu.Lock()
+			c.interceptIDs = append(c.interceptIDs, resp.Intercept)
+			c.contextMu.Unlock()
+		}
+		return json.RawMessage(`{}`), nil
 	}
-	// To disable, we'd need the intercept ID — return empty for now
+
+	// Disable: remove all intercepts
+	c.contextMu.Lock()
+	ids := c.interceptIDs
+	c.interceptIDs = nil
+	c.contextMu.Unlock()
+
+	for _, id := range ids {
+		removeParams, _ := json.Marshal(map[string]string{"intercept": id})
+		c.sendBiDi(ctx, "network.removeIntercept", removeParams)
+	}
 	return json.RawMessage(`{}`), nil
+}
+
+func (c *Client) handleContinueInterceptedRequest(ctx context.Context, params json.RawMessage) (json.RawMessage, error) {
+	var p struct {
+		RequestID string            `json:"requestId"`
+		URL       string            `json:"url"`
+		Method    string            `json:"method"`
+		Headers   map[string]string `json:"headers"`
+	}
+	if params != nil {
+		json.Unmarshal(params, &p)
+	}
+	bidiParams := map[string]interface{}{
+		"request": p.RequestID,
+	}
+	if p.URL != "" {
+		bidiParams["url"] = p.URL
+	}
+	if p.Method != "" {
+		bidiParams["method"] = p.Method
+	}
+	if len(p.Headers) > 0 {
+		hdrs := make([]map[string]interface{}, 0, len(p.Headers))
+		for k, v := range p.Headers {
+			hdrs = append(hdrs, map[string]interface{}{
+				"name":  k,
+				"value": map[string]string{"type": "string", "value": v},
+			})
+		}
+		bidiParams["headers"] = hdrs
+	}
+	raw, _ := json.Marshal(bidiParams)
+	return c.sendBiDi(ctx, "network.continueRequest", raw)
+}
+
+func (c *Client) handleAbortInterceptedRequest(ctx context.Context, params json.RawMessage) (json.RawMessage, error) {
+	var p struct {
+		RequestID string `json:"requestId"`
+	}
+	if params != nil {
+		json.Unmarshal(params, &p)
+	}
+	raw, _ := json.Marshal(map[string]string{"request": p.RequestID})
+	return c.sendBiDi(ctx, "network.failRequest", raw)
+}
+
+func (c *Client) handleFulfillInterceptedRequest(ctx context.Context, params json.RawMessage) (json.RawMessage, error) {
+	var p struct {
+		RequestID  string `json:"requestId"`
+		Status     int    `json:"status"`
+		StatusText string `json:"statusText"`
+		Headers    []struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"headers"`
+		Body string `json:"body"`
+	}
+	if params != nil {
+		json.Unmarshal(params, &p)
+	}
+	hdrs := make([]map[string]interface{}, 0, len(p.Headers))
+	for _, h := range p.Headers {
+		hdrs = append(hdrs, map[string]interface{}{
+			"name":  h.Name,
+			"value": map[string]string{"type": "string", "value": h.Value},
+		})
+	}
+	raw, _ := json.Marshal(map[string]interface{}{
+		"request":      p.RequestID,
+		"statusCode":   p.Status,
+		"reasonPhrase": p.StatusText,
+		"headers":      hdrs,
+		"body": map[string]interface{}{
+			"type":  "base64",
+			"value": p.Body,
+		},
+	})
+	return c.sendBiDi(ctx, "network.provideResponse", raw)
 }
 
 // ──────────────────────────────────────────────
@@ -1106,7 +1214,7 @@ func (c *Client) handleBiDiEvent(msg *Message) {
 	case "log.entryAdded":
 		c.onLogEntryAdded(params)
 	case "network.beforeRequestSent":
-		c.emitJugglerEvent("Network.requestWillBeSent", c.contextToSession(params), params)
+		c.onNetworkBeforeRequestSent(params)
 	case "network.responseCompleted":
 		c.emitJugglerEvent("Network.requestFinished", c.contextToSession(params), params)
 	default:
@@ -1224,6 +1332,63 @@ func (c *Client) onLogEntryAdded(params map[string]interface{}) {
 		},
 	})
 	c.emitJugglerEvent("Runtime.console", ctxID, jugglerParams)
+}
+
+func (c *Client) onNetworkBeforeRequestSent(params map[string]interface{}) {
+	sessionID := c.contextToSession(params)
+
+	// Extract request info
+	request, _ := params["request"].(map[string]interface{})
+	requestID := extractString(request, "request")
+	url := extractString(request, "url")
+	method := extractString(request, "method")
+
+	// Check if this is an intercepted (blocked) request
+	isBlocked, _ := params["isBlocked"].(bool)
+
+	// Emit Network.requestWillBeSent in Juggler format (with proper requestId)
+	jugglerReqParams, _ := json.Marshal(map[string]interface{}{
+		"requestId":           requestID,
+		"frameId":             extractString(params, "context"),
+		"url":                 url,
+		"method":              method,
+		"headers":             map[string]string{},
+		"isNavigationRequest": params["navigation"] != nil,
+	})
+	c.emitJugglerEvent("Network.requestWillBeSent", sessionID, jugglerReqParams)
+
+	// If blocked by interception, also emit Browser.requestIntercepted
+	if isBlocked {
+		// Extract headers
+		headers := map[string]string{}
+		if hdrs, ok := request["headers"].([]interface{}); ok {
+			for _, h := range hdrs {
+				hm, _ := h.(map[string]interface{})
+				name := extractString(hm, "name")
+				valObj, _ := hm["value"].(map[string]interface{})
+				val := extractString(valObj, "value")
+				if name != "" {
+					headers[name] = val
+				}
+			}
+		}
+
+		navigation, _ := params["navigation"].(string)
+		isNav := navigation != ""
+		contextID := extractString(params, "context")
+
+		jugglerParams, _ := json.Marshal(map[string]interface{}{
+			"requestId": requestID,
+			"request": map[string]interface{}{
+				"url":     url,
+				"method":  method,
+				"headers": headers,
+			},
+			"frameId":             contextID,
+			"isNavigationRequest": isNav,
+		})
+		c.emitJugglerEvent("Browser.requestIntercepted", sessionID, jugglerParams)
+	}
 }
 
 func (c *Client) emitPageEventFired(name string, params map[string]interface{}) {

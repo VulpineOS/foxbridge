@@ -798,10 +798,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
 			"requestId": ev.RequestID,
+			"networkId": ev.RequestID,
 			"request": map[string]interface{}{
-				"url":     ev.Request.URL,
-				"method":  ev.Request.Method,
-				"headers": ev.Request.Headers,
+				"url":             ev.Request.URL,
+				"method":          ev.Request.Method,
+				"headers":         ev.Request.Headers,
+				"initialPriority": "High",
+				"referrerPolicy":  "strict-origin-when-cross-origin",
 			},
 			"frameId":      ev.FrameID,
 			"resourceType": resourceType,
