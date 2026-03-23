@@ -181,6 +181,7 @@ func (c *Client) handleBrowserEnable() (json.RawMessage, error) {
 		"script.realmCreated",
 		"script.realmDestroyed",
 		"script.message",
+		"log.entryAdded",
 		"network.beforeRequestSent",
 		"network.responseCompleted",
 	}
@@ -575,6 +576,8 @@ func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string,
 		Y          float64         `json:"y"`
 		Button     json.RawMessage `json:"button"`
 		ClickCount int             `json:"clickCount"`
+		DeltaX     float64         `json:"deltaX"`
+		DeltaY     float64         `json:"deltaY"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -603,14 +606,15 @@ func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string,
 		}
 	}
 
-	switch p.Type {
-	case "mouseMoved":
+	// Handle both CDP original types (mouseMoved) and bridge-translated Juggler types (mousemove)
+	switch strings.ToLower(p.Type) {
+	case "mousemoved", "mousemove":
 		actions = append(actions, map[string]interface{}{
 			"type": "pointerMove",
 			"x":    int(p.X),
 			"y":    int(p.Y),
 		})
-	case "mousePressed":
+	case "mousepressed", "mousedown":
 		actions = append(actions, map[string]interface{}{
 			"type": "pointerMove",
 			"x":    int(p.X),
@@ -620,7 +624,7 @@ func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string,
 			"type":   "pointerDown",
 			"button": buttonID,
 		})
-	case "mouseReleased":
+	case "mousereleased", "mouseup":
 		actions = append(actions, map[string]interface{}{
 			"type": "pointerMove",
 			"x":    int(p.X),
@@ -629,6 +633,14 @@ func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string,
 		actions = append(actions, map[string]interface{}{
 			"type":   "pointerUp",
 			"button": buttonID,
+		})
+	case "mousewheel", "wheel":
+		actions = append(actions, map[string]interface{}{
+			"type":    "scroll",
+			"x":      int(p.X),
+			"y":      int(p.Y),
+			"deltaX":  int(p.DeltaX),
+			"deltaY":  int(p.DeltaY),
 		})
 	}
 
@@ -1091,6 +1103,8 @@ func (c *Client) handleBiDiEvent(msg *Message) {
 		c.onRealmDestroyed(params)
 	case "script.message":
 		c.onScriptMessage(params)
+	case "log.entryAdded":
+		c.onLogEntryAdded(params)
 	case "network.beforeRequestSent":
 		c.emitJugglerEvent("Network.requestWillBeSent", c.contextToSession(params), params)
 	case "network.responseCompleted":
@@ -1176,6 +1190,39 @@ func (c *Client) onRealmDestroyed(params map[string]interface{}) {
 func (c *Client) onScriptMessage(params map[string]interface{}) {
 	ctxID := extractString(params, "context")
 	jugglerParams, _ := json.Marshal(params)
+	c.emitJugglerEvent("Runtime.console", ctxID, jugglerParams)
+}
+
+func (c *Client) onLogEntryAdded(params map[string]interface{}) {
+	// BiDi log.entryAdded: {level, source: {realm, context}, text, timestamp, type}
+	source, _ := params["source"].(map[string]interface{})
+	ctxID := ""
+	if source != nil {
+		ctxID = extractString(source, "context")
+	}
+	level := extractString(params, "level")
+	text := extractString(params, "text")
+
+	// Map BiDi log level to CDP console type
+	// BiDi uses "info" for console.log — map to CDP "log" type
+	consoleType := "log"
+	switch level {
+	case "error":
+		consoleType = "error"
+	case "warn", "warning":
+		consoleType = "warning"
+	case "debug":
+		consoleType = "debug"
+	case "info":
+		consoleType = "log" // console.log shows as "info" in BiDi
+	}
+
+	jugglerParams, _ := json.Marshal(map[string]interface{}{
+		"type": consoleType,
+		"args": []map[string]interface{}{
+			{"type": "string", "value": text},
+		},
+	})
 	c.emitJugglerEvent("Runtime.console", ctxID, jugglerParams)
 }
 
