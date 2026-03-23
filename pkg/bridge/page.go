@@ -355,7 +355,8 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		})
 		b.isolatedWorldsMu.Unlock()
 
-		// Emit Runtime.executionContextCreated so Puppeteer registers this world
+		// Emit Runtime.executionContextCreated AFTER the response.
+		sessionForEvent := msg.SessionID
 		go func() {
 			b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 				"context": map[string]interface{}{
@@ -369,7 +370,7 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 						"frameId":   params.FrameID,
 					},
 				},
-			}, msg.SessionID)
+			}, sessionForEvent)
 		}()
 
 		return marshalResult(map[string]interface{}{"executionContextId": ctxID})

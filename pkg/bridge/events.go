@@ -288,6 +288,42 @@ func (b *Bridge) SetupEventSubscriptions() {
 			},
 			"type": "Navigation",
 		}, cdpSessionID)
+
+		// Re-emit isolated world contexts after navigation.
+		// Puppeteer expects the utility world to exist after each navigation.
+		// In Chrome, addScriptToEvaluateOnNewDocument handles this automatically.
+		if cdpSessionID != "" {
+			b.isolatedWorldsMu.RLock()
+			worlds := b.isolatedWorlds[cdpSessionID]
+			b.isolatedWorldsMu.RUnlock()
+
+			// Get the latest Juggler context for mapping
+			b.latestCtxMu.RLock()
+			latestCtx := b.latestCtx[jugglerSessionID]
+			b.latestCtxMu.RUnlock()
+
+			for _, w := range worlds {
+				isoCtxID := b.nextCtxID()
+				if latestCtx != "" {
+					b.ctxMapMu.Lock()
+					b.ctxMap[isoCtxID] = latestCtx
+					b.ctxMapMu.Unlock()
+				}
+				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+					"context": map[string]interface{}{
+						"id":       isoCtxID,
+						"origin":   "",
+						"name":     w.WorldName,
+						"uniqueId": fmt.Sprintf("isolated-%s-%s-%d", ev.FrameID, w.WorldName, isoCtxID),
+						"auxData": map[string]interface{}{
+							"isDefault": false,
+							"type":      "isolated",
+							"frameId":   ev.FrameID,
+						},
+					},
+				}, cdpSessionID)
+			}
+		}
 	})
 
 	// Page.eventFired — maps to Page.loadEventFired or Page.domContentEventFired
@@ -394,32 +430,10 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
 
-		// Re-emit isolated world contexts after navigation (Puppeteer expects them)
-		if cdpSessionID != "" {
-			b.isolatedWorldsMu.RLock()
-			worlds := b.isolatedWorlds[cdpSessionID]
-			b.isolatedWorldsMu.RUnlock()
-			for _, w := range worlds {
-				isoCtxID := b.nextCtxID()
-				b.ctxMapMu.Lock()
-				b.ctxMap[isoCtxID] = ev.ExecutionContextID // map to same Juggler context
-				b.ctxMapMu.Unlock()
-
-				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
-					"context": map[string]interface{}{
-						"id":       isoCtxID,
-						"origin":   "",
-						"name":     w.WorldName,
-						"uniqueId": fmt.Sprintf("isolated-%s-%s-%d", w.FrameID, w.WorldName, isoCtxID),
-						"auxData": map[string]interface{}{
-							"isDefault": false,
-							"type":      "isolated",
-							"frameId":   ev.AuxData.FrameID,
-						},
-					},
-				}, cdpSessionID)
-			}
-		}
+		// NOTE: Isolated world re-emission removed here.
+		// It was causing context event cascades on BiDi.
+		// The Page.createIsolatedWorld handler already emits the context event.
+		// After navigation, Puppeteer calls createIsolatedWorld again.
 
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
