@@ -154,6 +154,17 @@ func (c *Client) handleBrowserEnable() (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultCallTimeout)
 	defer cancel()
 
+	// Step 1: Create a BiDi session (required before any other commands)
+	sessionParams, _ := json.Marshal(map[string]interface{}{
+		"capabilities": map[string]interface{}{},
+	})
+	_, err := c.sendBiDi(ctx, "session.new", sessionParams)
+	if err != nil {
+		log.Printf("[bidi] session.new failed (may already exist): %v", err)
+		// Continue anyway — session might already be active
+	}
+
+	// Step 2: Subscribe to events
 	events := []string{
 		"browsingContext.contextCreated",
 		"browsingContext.contextDestroyed",
@@ -845,7 +856,13 @@ func (c *Client) handleBiDiEvent(msg *Message) {
 	case "browsingContext.contextDestroyed":
 		c.onContextDestroyed(params)
 	case "browsingContext.navigationStarted":
-		c.emitJugglerEvent("Page.navigationCommitted", c.contextToSession(params), params)
+		// Translate BiDi navigation params to Juggler format
+		navParams, _ := json.Marshal(map[string]interface{}{
+			"frameId":      extractString(params, "context"),
+			"url":          extractString(params, "url"),
+			"navigationId": extractString(params, "navigation"),
+		})
+		c.emitJugglerEvent("Page.navigationCommitted", c.contextToSession(params), navParams)
 	case "browsingContext.load":
 		c.emitPageEventFired("load", params)
 	case "browsingContext.domContentLoaded":
@@ -950,8 +967,11 @@ func (c *Client) onScriptMessage(params map[string]interface{}) {
 
 func (c *Client) emitPageEventFired(name string, params map[string]interface{}) {
 	sessionID := c.contextToSession(params)
+	// Include frameId — the bridge's event handler needs it for lifecycle events
+	contextID := extractString(params, "context")
 	jugglerParams, _ := json.Marshal(map[string]interface{}{
-		"name": name,
+		"name":    name,
+		"frameId": contextID, // BiDi context ID serves as frame ID
 	})
 	c.emitJugglerEvent("Page.eventFired", sessionID, jugglerParams)
 }
