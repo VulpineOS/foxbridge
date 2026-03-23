@@ -664,6 +664,22 @@ func (c *Client) handleDispatchKeyEvent(ctx context.Context, sessionID string, p
 		keyValue = p.Code
 	}
 
+	// Map special key names to WebDriver BiDi key values (Unicode PUA)
+	specialKeys := map[string]string{
+		"End": "\uE010", "Home": "\uE011", "ArrowLeft": "\uE012",
+		"ArrowUp": "\uE013", "ArrowRight": "\uE014", "ArrowDown": "\uE015",
+		"Insert": "\uE016", "Delete": "\uE017", "Escape": "\uE00C",
+		"Backspace": "\uE003", "Tab": "\uE004", "Enter": "\uE006",
+		"F1": "\uE031", "F2": "\uE032", "F3": "\uE033", "F4": "\uE034",
+		"F5": "\uE035", "F6": "\uE036", "F7": "\uE037", "F8": "\uE038",
+		"F9": "\uE039", "F10": "\uE03A", "F11": "\uE03B", "F12": "\uE03C",
+		"PageUp": "\uE00E", "PageDown": "\uE00F",
+		"Shift": "\uE008", "Control": "\uE009", "Alt": "\uE00A", "Meta": "\uE03D",
+	}
+	if mapped, ok := specialKeys[keyValue]; ok {
+		keyValue = mapped
+	}
+
 	actions := []interface{}{}
 	switch strings.ToLower(p.Type) {
 	case "keydown", "rawkeydown":
