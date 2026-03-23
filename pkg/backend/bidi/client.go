@@ -97,6 +97,9 @@ func (c *Client) callWithContext(ctx context.Context, sessionID, method string, 
 		return c.handleGetCookies(ctx, params)
 	case "Browser.clearCookies":
 		return c.handleClearCookies(ctx, params)
+	case "Browser.setTimezoneOverride":
+		// BiDi doesn't have a native timezone override — return success silently
+		return json.RawMessage(`{}`), nil
 	case "Browser.setExtraHTTPHeaders":
 		return c.handleSetExtraHTTPHeaders(ctx, sessionID, params)
 	case "Browser.setRequestInterception":
@@ -238,9 +241,14 @@ func (c *Client) handleBrowserGetInfo() (json.RawMessage, error) {
 }
 
 func (c *Client) handleCreateBrowserContext(ctx context.Context) (json.RawMessage, error) {
-	result, err := c.sendBiDi(ctx, "browser.createUserContext", nil)
+	result, err := c.sendBiDi(ctx, "browser.createUserContext", json.RawMessage(`{}`))
 	if err != nil {
-		return nil, err
+		// Fallback: return a synthetic context ID
+		log.Printf("[bidi] browser.createUserContext failed: %v, using fallback", err)
+		resp, _ := json.Marshal(map[string]interface{}{
+			"browserContextId": fmt.Sprintf("ctx-%d", time.Now().UnixNano()),
+		})
+		return resp, nil
 	}
 	var created struct {
 		UserContext string `json:"userContext"`
@@ -267,16 +275,99 @@ func (c *Client) handleRemoveBrowserContext(ctx context.Context, params json.Raw
 }
 
 func (c *Client) handleSetCookies(ctx context.Context, params json.RawMessage) (json.RawMessage, error) {
-	// Forward params directly — storage.setCookie expects similar shape
-	return c.sendBiDi(ctx, "storage.setCookie", params)
+	// Juggler sends: {cookies: [{name, value, domain, path, ...}], browserContextId}
+	// BiDi expects: {cookie: {name, value, domain, path, ...}, partition: {type, ...}}
+	var p struct {
+		Cookies []struct {
+			Name     string `json:"name"`
+			Value    string `json:"value"`
+			Domain   string `json:"domain"`
+			Path     string `json:"path"`
+			Secure   bool   `json:"secure"`
+			HttpOnly bool   `json:"httpOnly"`
+			SameSite string `json:"sameSite"`
+		} `json:"cookies"`
+		BrowserContextID string `json:"browserContextId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+
+	for _, cookie := range p.Cookies {
+		bidiCookie := map[string]interface{}{
+			"name": cookie.Name,
+			"value": map[string]interface{}{
+				"type":  "string",
+				"value": cookie.Value,
+			},
+			"domain":   cookie.Domain,
+			"path":     cookie.Path,
+			"secure":   cookie.Secure,
+			"httpOnly": cookie.HttpOnly,
+		}
+		if cookie.SameSite != "" {
+			bidiCookie["sameSite"] = cookie.SameSite
+		}
+
+		bidiParams, _ := json.Marshal(map[string]interface{}{
+			"cookie": bidiCookie,
+		})
+		if _, err := c.sendBiDi(ctx, "storage.setCookie", bidiParams); err != nil {
+			return nil, err
+		}
+	}
+	return json.RawMessage(`{}`), nil
 }
 
 func (c *Client) handleGetCookies(ctx context.Context, params json.RawMessage) (json.RawMessage, error) {
-	return c.sendBiDi(ctx, "storage.getCookies", params)
+	// BiDi storage.getCookies returns: {cookies: [{name, value: {type, value}, domain, ...}]}
+	result, err := c.sendBiDi(ctx, "storage.getCookies", json.RawMessage(`{}`))
+	if err != nil {
+		return nil, err
+	}
+
+	var bidiResp struct {
+		Cookies []struct {
+			Name     string `json:"name"`
+			Value    struct {
+				Type  string `json:"type"`
+				Value string `json:"value"`
+			} `json:"value"`
+			Domain   string `json:"domain"`
+			Path     string `json:"path"`
+			Size     int    `json:"size"`
+			Secure   bool   `json:"secure"`
+			HttpOnly bool   `json:"httpOnly"`
+			SameSite string `json:"sameSite"`
+		} `json:"cookies"`
+	}
+	if err := json.Unmarshal(result, &bidiResp); err != nil {
+		return nil, err
+	}
+
+	// Convert to Juggler format
+	cookies := make([]map[string]interface{}, 0, len(bidiResp.Cookies))
+	for _, c := range bidiResp.Cookies {
+		cookies = append(cookies, map[string]interface{}{
+			"name":     c.Name,
+			"value":    c.Value.Value,
+			"domain":   c.Domain,
+			"path":     c.Path,
+			"size":     c.Size,
+			"secure":   c.Secure,
+			"httpOnly": c.HttpOnly,
+			"sameSite": c.SameSite,
+		})
+	}
+
+	resp, _ := json.Marshal(map[string]interface{}{
+		"cookies": cookies,
+	})
+	return resp, nil
 }
 
 func (c *Client) handleClearCookies(ctx context.Context, params json.RawMessage) (json.RawMessage, error) {
-	return c.sendBiDi(ctx, "storage.deleteCookies", params)
+	return c.sendBiDi(ctx, "storage.deleteCookies", json.RawMessage(`{}`))
 }
 
 func (c *Client) handleSetExtraHTTPHeaders(ctx context.Context, sessionID string, params json.RawMessage) (json.RawMessage, error) {
@@ -477,11 +568,11 @@ func (c *Client) handleAddPreloadScript(ctx context.Context, params json.RawMess
 func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string, params json.RawMessage) (json.RawMessage, error) {
 	bidiCtx := c.resolveContext(sessionID)
 	var p struct {
-		Type    string  `json:"type"`
-		X       float64 `json:"x"`
-		Y       float64 `json:"y"`
-		Button  int     `json:"button"`
-		ClickCount int  `json:"clickCount"`
+		Type       string          `json:"type"`
+		X          float64         `json:"x"`
+		Y          float64         `json:"y"`
+		Button     json.RawMessage `json:"button"`
+		ClickCount int             `json:"clickCount"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -490,8 +581,25 @@ func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string,
 	// Map Juggler mouse event types to BiDi input action sequences
 	actions := []interface{}{}
 
-	// Map button number: 0=left, 1=middle, 2=right
-	buttonID := p.Button
+	// Button can be int (Juggler: 0=left, 1=middle, 2=right) or string (CDP: "left", "middle", "right")
+	buttonID := 0
+	if p.Button != nil {
+		var btnInt int
+		if json.Unmarshal(p.Button, &btnInt) == nil {
+			buttonID = btnInt
+		} else {
+			var btnStr string
+			json.Unmarshal(p.Button, &btnStr)
+			switch btnStr {
+			case "left":
+				buttonID = 0
+			case "middle":
+				buttonID = 1
+			case "right":
+				buttonID = 2
+			}
+		}
+	}
 
 	switch p.Type {
 	case "mouseMoved":
@@ -611,12 +719,20 @@ func (c *Client) handleRuntimeEvaluate(ctx context.Context, sessionID string, pa
 		ownership = "root"
 	}
 
+	// The bridge wraps async expressions in an IIFE that returns a Promise.
+	// BiDi natively supports awaitPromise, so always await if the expression
+	// looks like an async IIFE (from the bridge's awaitPromise wrapping).
+	awaitPromise := p.AwaitPromise
+	if strings.Contains(p.Expression, "(async () =>") {
+		awaitPromise = true
+	}
+
 	bidiParams, _ := json.Marshal(map[string]interface{}{
 		"expression": p.Expression,
 		"target": map[string]interface{}{
 			"context": bidiCtx,
 		},
-		"awaitPromise":    p.AwaitPromise,
+		"awaitPromise":    awaitPromise,
 		"resultOwnership": ownership,
 	})
 	result, err := c.sendBiDi(ctx, "script.evaluate", bidiParams)
@@ -666,29 +782,28 @@ func (c *Client) handleRuntimeCallFunction(ctx context.Context, sessionID string
 	}
 
 	raw, _ := json.Marshal(bidiParam)
+	log.Printf("[bidi] script.callFunction: %s", string(raw)[:min(len(raw), 300)])
 	result, err := c.sendBiDi(ctx, "script.callFunction", raw)
 	if err != nil {
+		log.Printf("[bidi] script.callFunction error: %v", err)
 		return nil, err
 	}
+	log.Printf("[bidi] script.callFunction result: %s", string(result)[:min(len(result), 300)])
 	return c.translateScriptResult(result), nil
 }
 
-func (c *Client) handleRuntimeDisposeObject(ctx context.Context, sessionID string, params json.RawMessage) (json.RawMessage, error) {
-	bidiCtx := c.resolveContext(sessionID)
-	var p struct {
-		ObjectID string `json:"objectId"`
+func min(a, b int) int {
+	if a < b {
+		return a
 	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, err
-	}
+	return b
+}
 
-	bidiParams, _ := json.Marshal(map[string]interface{}{
-		"handles": []string{p.ObjectID},
-		"target": map[string]interface{}{
-			"context": bidiCtx,
-		},
-	})
-	return c.sendBiDi(ctx, "script.disown", bidiParams)
+func (c *Client) handleRuntimeDisposeObject(ctx context.Context, sessionID string, params json.RawMessage) (json.RawMessage, error) {
+	// Skip script.disown for BiDi — it can cause Firefox to close the WebSocket
+	// when handles are already invalid or from destroyed realms. BiDi manages
+	// object lifetimes via realm destruction, so explicit disown is not needed.
+	return json.RawMessage(`{}`), nil
 }
 
 func (c *Client) handleRuntimeGetObjectProperties(ctx context.Context, sessionID string, params json.RawMessage) (json.RawMessage, error) {
@@ -1032,31 +1147,31 @@ func (c *Client) contextToSession(params map[string]interface{}) string {
 }
 
 // translateScriptResult converts BiDi script result format to Juggler result format.
+// BiDi returns: {realm: "...", result: {type: "number", value: 2}, type: "success"}
+// We need to produce Juggler-style: {executionContextId: "...", result: {type: "number", value: 2}}
 func (c *Client) translateScriptResult(result json.RawMessage) json.RawMessage {
-	var bidiResult struct {
-		Result    json.RawMessage `json:"result"`
-		RealmInfo struct {
-			Realm   string `json:"realm"`
-			Context string `json:"context"`
-		} `json:"realmInfo"`
+	var bidiOuter struct {
+		Realm  string          `json:"realm"`
+		Result json.RawMessage `json:"result"`
+		Type   string          `json:"type"`
 	}
-	if err := json.Unmarshal(result, &bidiResult); err != nil {
+	if err := json.Unmarshal(result, &bidiOuter); err != nil {
 		return result
 	}
 
-	// Parse the BiDi remote value
+	// Parse the BiDi remote value (this is the actual {type, value, handle} object)
 	var remoteValue struct {
 		Type   string          `json:"type"`
 		Value  json.RawMessage `json:"value"`
 		Handle string          `json:"handle"`
 	}
-	if err := json.Unmarshal(bidiResult.Result, &remoteValue); err != nil {
+	if err := json.Unmarshal(bidiOuter.Result, &remoteValue); err != nil {
 		return result
 	}
 
 	// Map to Juggler-style result
 	jugglerResult := map[string]interface{}{
-		"executionContextId": bidiResult.RealmInfo.Realm,
+		"executionContextId": bidiOuter.Realm,
 	}
 
 	switch remoteValue.Type {
@@ -1076,7 +1191,20 @@ func (c *Client) translateScriptResult(result json.RawMessage) json.RawMessage {
 		var b bool
 		json.Unmarshal(remoteValue.Value, &b)
 		jugglerResult["result"] = map[string]interface{}{"type": "boolean", "value": b}
-	case "object", "array", "map", "set", "node", "window":
+	case "node", "htmlelement":
+		// BiDi "node" maps to CDP "object" with subtype "node"
+		obj := map[string]interface{}{
+			"type":    "object",
+			"subtype": "node",
+		}
+		if remoteValue.Handle != "" {
+			obj["objectId"] = remoteValue.Handle
+		}
+		if remoteValue.Value != nil {
+			obj["value"] = remoteValue.Value
+		}
+		jugglerResult["result"] = obj
+	case "object", "array", "map", "set", "window", "nodelist", "htmlcollection":
 		obj := map[string]interface{}{"type": remoteValue.Type}
 		if remoteValue.Handle != "" {
 			obj["objectId"] = remoteValue.Handle
@@ -1097,7 +1225,8 @@ func (c *Client) translateScriptResult(result json.RawMessage) json.RawMessage {
 	return resp
 }
 
-// toBiDiArg converts a Juggler argument to a BiDi serialized value.
+// toBiDiArg converts a Juggler/CDP argument to a BiDi serialized value.
+// CDP args come as {value: X} or {objectId: "..."} — no explicit type field.
 func (c *Client) toBiDiArg(raw json.RawMessage) map[string]interface{} {
 	var arg struct {
 		Type     string          `json:"type"`
@@ -1112,31 +1241,36 @@ func (c *Client) toBiDiArg(raw json.RawMessage) map[string]interface{} {
 		return map[string]interface{}{"handle": arg.ObjectID}
 	}
 
-	switch arg.Type {
-	case "string":
-		var s string
-		json.Unmarshal(arg.Value, &s)
-		return map[string]interface{}{"type": "string", "value": s}
-	case "number":
-		var n float64
-		json.Unmarshal(arg.Value, &n)
-		return map[string]interface{}{"type": "number", "value": n}
-	case "boolean":
-		var b bool
-		json.Unmarshal(arg.Value, &b)
-		return map[string]interface{}{"type": "boolean", "value": b}
-	case "null":
-		return map[string]interface{}{"type": "null"}
-	case "undefined":
-		return map[string]interface{}{"type": "undefined"}
-	case "bigint":
-		var s string
-		json.Unmarshal(arg.Value, &s)
-		return map[string]interface{}{"type": "bigint", "value": s}
-	default:
-		// Try to infer from the raw JSON
+	// If we have an explicit type, use it
+	if arg.Type != "" {
+		switch arg.Type {
+		case "string":
+			var s string
+			json.Unmarshal(arg.Value, &s)
+			return map[string]interface{}{"type": "string", "value": s}
+		case "number":
+			var n float64
+			json.Unmarshal(arg.Value, &n)
+			return map[string]interface{}{"type": "number", "value": n}
+		case "boolean":
+			var b bool
+			json.Unmarshal(arg.Value, &b)
+			return map[string]interface{}{"type": "boolean", "value": b}
+		case "null":
+			return map[string]interface{}{"type": "null"}
+		case "undefined":
+			return map[string]interface{}{"type": "undefined"}
+		case "bigint":
+			var s string
+			json.Unmarshal(arg.Value, &s)
+			return map[string]interface{}{"type": "bigint", "value": s}
+		}
+	}
+
+	// CDP-style args: {value: X} — infer type from the value
+	if arg.Value != nil {
 		var v interface{}
-		json.Unmarshal(raw, &v)
+		json.Unmarshal(arg.Value, &v)
 		switch tv := v.(type) {
 		case string:
 			return map[string]interface{}{"type": "string", "value": tv}
@@ -1144,9 +1278,26 @@ func (c *Client) toBiDiArg(raw json.RawMessage) map[string]interface{} {
 			return map[string]interface{}{"type": "number", "value": tv}
 		case bool:
 			return map[string]interface{}{"type": "boolean", "value": tv}
+		case nil:
+			return map[string]interface{}{"type": "null"}
 		default:
-			return map[string]interface{}{"type": "undefined"}
+			// Complex value — serialize as channel value
+			return map[string]interface{}{"type": "object", "value": v}
 		}
+	}
+
+	// Last resort: try to infer from the raw JSON itself
+	var v interface{}
+	json.Unmarshal(raw, &v)
+	switch tv := v.(type) {
+	case string:
+		return map[string]interface{}{"type": "string", "value": tv}
+	case float64:
+		return map[string]interface{}{"type": "number", "value": tv}
+	case bool:
+		return map[string]interface{}{"type": "boolean", "value": tv}
+	default:
+		return map[string]interface{}{"type": "undefined"}
 	}
 }
 

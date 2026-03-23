@@ -62,9 +62,14 @@ func (p *Process) Start(cfg Config) error {
 	}
 
 	args := []string{
-		"--juggler-pipe",
 		"--no-remote",
-		"--purgecaches",
+	}
+
+	// BiDi-only mode: don't use Juggler pipes (standard Firefox doesn't have Juggler)
+	biDiOnly := cfg.BiDiPort > 0
+
+	if !biDiOnly {
+		args = append(args, "--juggler-pipe", "--purgecaches")
 	}
 	if cfg.Headless {
 		args = append(args, "--headless")
@@ -77,44 +82,53 @@ func (p *Process) Start(cfg Config) error {
 	}
 	args = append(args, cfg.ExtraArgs...)
 
-	// Create pipes for Juggler transport (FD 3 read, FD 4 write from Firefox's perspective).
-	toFirefoxRead, toFirefoxWrite, err := os.Pipe()
-	if err != nil {
-		return fmt.Errorf("create pipe to firefox: %w", err)
-	}
-	fromFirefoxRead, fromFirefoxWrite, err := os.Pipe()
-	if err != nil {
-		toFirefoxRead.Close()
-		toFirefoxWrite.Close()
-		return fmt.Errorf("create pipe from firefox: %w", err)
-	}
-
 	cmd := exec.Command(bin, args...)
 	// Suppress Firefox output — redirect to /dev/null or log file
 	devNull, _ := os.Open(os.DevNull)
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
-	// FD 0=stdin, 1=stdout, 2=stderr, 3=juggler-read (from us), 4=juggler-write (to us)
-	cmd.ExtraFiles = []*os.File{toFirefoxRead, fromFirefoxWrite}
 
-	if err := cmd.Start(); err != nil {
+	if !biDiOnly {
+		// Create pipes for Juggler transport (FD 3 read, FD 4 write from Firefox's perspective).
+		toFirefoxRead, toFirefoxWrite, err := os.Pipe()
+		if err != nil {
+			return fmt.Errorf("create pipe to firefox: %w", err)
+		}
+		fromFirefoxRead, fromFirefoxWrite, err := os.Pipe()
+		if err != nil {
+			toFirefoxRead.Close()
+			toFirefoxWrite.Close()
+			return fmt.Errorf("create pipe from firefox: %w", err)
+		}
+
+		// FD 0=stdin, 1=stdout, 2=stderr, 3=juggler-read (from us), 4=juggler-write (to us)
+		cmd.ExtraFiles = []*os.File{toFirefoxRead, fromFirefoxWrite}
+
+		if err := cmd.Start(); err != nil {
+			toFirefoxRead.Close()
+			toFirefoxWrite.Close()
+			fromFirefoxRead.Close()
+			fromFirefoxWrite.Close()
+			return fmt.Errorf("start firefox: %w", err)
+		}
+
+		// Close the ends we don't use.
 		toFirefoxRead.Close()
-		toFirefoxWrite.Close()
-		fromFirefoxRead.Close()
 		fromFirefoxWrite.Close()
-		return fmt.Errorf("start firefox: %w", err)
+
+		transport := juggler.NewPipeTransport(fromFirefoxRead, toFirefoxWrite)
+		client := juggler.NewClient(transport)
+
+		p.client = client
+		p.transport = transport
+	} else {
+		// BiDi-only: no pipes, just start the process
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("start firefox: %w", err)
+		}
 	}
 
-	// Close the ends we don't use.
-	toFirefoxRead.Close()
-	fromFirefoxWrite.Close()
-
-	transport := juggler.NewPipeTransport(fromFirefoxRead, toFirefoxWrite)
-	client := juggler.NewClient(transport)
-
 	p.cmd = cmd
-	p.client = client
-	p.transport = transport
 	p.bidiPort = cfg.BiDiPort
 	p.startedAt = time.Now()
 

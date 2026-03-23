@@ -247,6 +247,21 @@ func (b *Bridge) SetupEventSubscriptions() {
 			}
 		}
 
+		// Emit executionContextsCleared before the new navigation.
+		// This tells Puppeteer to reset all execution contexts for the frame.
+		// BiDi doesn't have an explicit "contexts cleared" event — we emit it on navigation.
+		if cdpSessionID != "" {
+			b.ctxMapMu.Lock()
+			b.ctxMap = make(map[int]string)
+			b.ctxMapMu.Unlock()
+			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
+
+			// Mark this session for isolated world re-emission on next context creation
+			b.pendingContextClearMu.Lock()
+			b.pendingContextClear[cdpSessionID] = true
+			b.pendingContextClearMu.Unlock()
+		}
+
 		// Update session URL
 		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
 			info.URL = ev.URL
@@ -289,41 +304,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			"type": "Navigation",
 		}, cdpSessionID)
 
-		// Re-emit isolated world contexts after navigation.
-		// Puppeteer expects the utility world to exist after each navigation.
-		// In Chrome, addScriptToEvaluateOnNewDocument handles this automatically.
-		if cdpSessionID != "" {
-			b.isolatedWorldsMu.RLock()
-			worlds := b.isolatedWorlds[cdpSessionID]
-			b.isolatedWorldsMu.RUnlock()
-
-			// Get the latest Juggler context for mapping
-			b.latestCtxMu.RLock()
-			latestCtx := b.latestCtx[jugglerSessionID]
-			b.latestCtxMu.RUnlock()
-
-			for _, w := range worlds {
-				isoCtxID := b.nextCtxID()
-				if latestCtx != "" {
-					b.ctxMapMu.Lock()
-					b.ctxMap[isoCtxID] = latestCtx
-					b.ctxMapMu.Unlock()
-				}
-				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
-					"context": map[string]interface{}{
-						"id":       isoCtxID,
-						"origin":   "",
-						"name":     w.WorldName,
-						"uniqueId": fmt.Sprintf("isolated-%s-%s-%d", ev.FrameID, w.WorldName, isoCtxID),
-						"auxData": map[string]interface{}{
-							"isDefault": false,
-							"type":      "isolated",
-							"frameId":   ev.FrameID,
-						},
-					},
-				}, cdpSessionID)
-			}
-		}
+		// NOTE: Isolated world re-emission moved to Page.eventFired(load)
 	})
 
 	// Page.eventFired — maps to Page.loadEventFired or Page.domContentEventFired
@@ -361,6 +342,9 @@ func (b *Bridge) SetupEventSubscriptions() {
 			b.emitEvent("Page.frameStoppedLoading", map[string]interface{}{
 				"frameId": ev.FrameID,
 			}, cdpSessionID)
+
+			// NOTE: Isolated worlds are NOT re-emitted here.
+			// Puppeteer calls Page.createIsolatedWorld after navigation when needed.
 		case "DOMContentLoaded":
 			b.emitEvent("Page.domContentEventFired", map[string]interface{}{
 				"timestamp": 0,
@@ -385,6 +369,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 			b.ctxMapMu.Unlock()
 
 			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
+
+			// Mark for isolated world re-emission
+			b.pendingContextClearMu.Lock()
+			b.pendingContextClear[cdpSessionID] = true
+			b.pendingContextClearMu.Unlock()
 		}
 	})
 
@@ -430,11 +419,6 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
 
-		// NOTE: Isolated world re-emission removed here.
-		// It was causing context event cascades on BiDi.
-		// The Page.createIsolatedWorld handler already emits the context event.
-		// After navigation, Puppeteer calls createIsolatedWorld again.
-
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
 				"id":       ctxID,
@@ -448,6 +432,39 @@ func (b *Bridge) SetupEventSubscriptions() {
 				},
 			},
 		}, cdpSessionID)
+
+		// Re-emit isolated world contexts whenever a new default context appears.
+		// Chrome keeps isolated worlds alive across navigations — only the execution
+		// context within the world changes. BiDi creates/destroys realms rapidly during
+		// navigation, so we re-emit on EVERY new default context. Puppeteer uses the
+		// same uniqueId to track the world, so duplicates update (not create) the world.
+		if cdpSessionID != "" {
+			b.isolatedWorldsMu.RLock()
+			worlds := b.isolatedWorlds[cdpSessionID]
+			b.isolatedWorldsMu.RUnlock()
+
+			frameID := ev.AuxData.FrameID
+			for _, w := range worlds {
+				isoCtxID := b.nextCtxID()
+				b.ctxMapMu.Lock()
+				b.ctxMap[isoCtxID] = ev.ExecutionContextID
+				b.ctxMapMu.Unlock()
+
+				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+					"context": map[string]interface{}{
+						"id":       isoCtxID,
+						"origin":   "",
+						"name":     w.WorldName,
+						"uniqueId": fmt.Sprintf("isolated-%s-%s", frameID, w.WorldName),
+						"auxData": map[string]interface{}{
+							"isDefault": false,
+							"type":      "isolated",
+							"frameId":   frameID,
+						},
+					},
+				}, cdpSessionID)
+			}
+		}
 	})
 
 	// Runtime.executionContextDestroyed → Runtime.executionContextDestroyed
@@ -469,17 +486,33 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 		b.ctxMapMu.RUnlock()
 
-		// Clean up the mapping
-		if numericID > 0 {
-			b.ctxMapMu.Lock()
-			delete(b.ctxMap, numericID)
-			b.ctxMapMu.Unlock()
+		// Clean up all mappings pointing to this Juggler context ID,
+		// including isolated world contexts that were mapped to the same realm.
+		var destroyIDs []int
+		b.ctxMapMu.Lock()
+		for k, v := range b.ctxMap {
+			if v == ev.ExecutionContextID {
+				destroyIDs = append(destroyIDs, k)
+				delete(b.ctxMap, k)
+			}
 		}
+		b.ctxMapMu.Unlock()
 
+		// Emit destroy for the primary context (the one matching numericID)
 		b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
 			"executionContextId":       numericID,
 			"executionContextUniqueId": ev.ExecutionContextID,
 		}, cdpSessionID)
+
+		// Also emit destroy for any isolated world contexts mapped to the same realm
+		for _, id := range destroyIDs {
+			if id != numericID && id > 0 {
+				b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
+					"executionContextId":       id,
+					"executionContextUniqueId": fmt.Sprintf("isolated-derived-%d", id),
+				}, cdpSessionID)
+			}
+		}
 	})
 
 	// Runtime.console → Runtime.consoleAPICalled

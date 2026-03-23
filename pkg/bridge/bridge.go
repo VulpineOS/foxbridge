@@ -13,6 +13,7 @@ import (
 // Bridge translates CDP messages to Juggler protocol calls.
 type Bridge struct {
 	backend    backend.Backend
+	isBiDi     bool // true when using BiDi backend (disables $eval combine pattern)
 	sessions   *cdp.SessionManager
 	server     *cdp.Server
 	autoAttach *autoAttachState
@@ -38,12 +39,19 @@ type Bridge struct {
 	lastQuery        map[string]string // cdpSessionID → CSS selector
 	lastQueryAll     map[string]bool   // cdpSessionID → true if querySelectorAll
 	lastQuerySkips   map[string]int    // cdpSessionID → remaining calls to skip before user fn
+	// pendingContextClear tracks sessions that had executionContextsCleared.
+	// The next executionContextCreated should trigger isolated world re-emission.
+	pendingContextClearMu sync.Mutex
+	pendingContextClear   map[string]bool // cdpSessionID → true
 }
 
-// New creates a new Bridge.
-func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *Bridge {
+// New creates a new Bridge. Set isBiDi to true when using the BiDi backend.
+func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server, isBiDi ...bool) *Bridge {
+	bidi := len(isBiDi) > 0 && isBiDi[0]
+	_ = bidi
 	return &Bridge{
 		backend:    b,
+		isBiDi:     bidi,
 		sessions:   sessions,
 		server:     server,
 		autoAttach: newAutoAttachState(),
@@ -53,9 +61,10 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		latestCtx:      make(map[string]string),
 		isolatedWorlds: make(map[string][]isolatedWorldInfo),
 		nodeObjects:    make(map[int]string),
-		lastQuery:      make(map[string]string),
-		lastQueryAll:   make(map[string]bool),
-		lastQuerySkips: make(map[string]int),
+		lastQuery:           make(map[string]string),
+		lastQueryAll:        make(map[string]bool),
+		lastQuerySkips:      make(map[string]int),
+		pendingContextClear: make(map[string]bool),
 	}
 }
 

@@ -106,7 +106,7 @@ func main() {
 	}, sessions)
 
 	// Create bridge and set up event subscriptions BEFORE enabling Browser.
-	b = bridge.New(be, sessions, server)
+	b = bridge.New(be, sessions, server, *backendMode == "bidi")
 	b.SetupEventSubscriptions()
 
 	// Enable Browser domain with attachToDefaultContext.

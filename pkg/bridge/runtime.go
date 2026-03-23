@@ -17,28 +17,31 @@ func mustMarshal(v interface{}) json.RawMessage {
 func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
 	switch msg.Method {
 	case "Runtime.enable":
-		// After returning success, emit executionContextCreated for existing contexts
-		// (Puppeteer expects these after Runtime.enable, like Chrome does)
+		// Emit the latest execution context for this session so Puppeteer can
+		// start evaluating immediately. The context was created by BiDi's
+		// script.realmCreated or Juggler's Runtime.executionContextCreated.
 		go func() {
-			// Get frame ID from the session
-			jugglerSessionID := b.resolveSession(msg.SessionID)
 			frameID := ""
 			if info, ok := b.sessions.Get(msg.SessionID); ok {
 				frameID = info.FrameID
 			}
-			if frameID == "" && jugglerSessionID != "" {
-				if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
-					frameID = info.FrameID
-				}
-			}
-			if frameID != "" {
-				// Emit a default execution context for this frame
+			jugglerSessionID := b.resolveSession(msg.SessionID)
+			b.latestCtxMu.RLock()
+			latestCtx := b.latestCtx[jugglerSessionID]
+			b.latestCtxMu.RUnlock()
+
+			if frameID != "" && latestCtx != "" {
+				ctxID := b.nextCtxID()
+				b.ctxMapMu.Lock()
+				b.ctxMap[ctxID] = latestCtx
+				b.ctxMapMu.Unlock()
+
 				b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 					"context": map[string]interface{}{
-						"id":       100, // distinct from earlier contexts
-						"origin":   "https://example.com",
+						"id":       ctxID,
+						"origin":   "",
 						"name":     "",
-						"uniqueId": fmt.Sprintf("ctx-%s-main", jugglerSessionID),
+						"uniqueId": latestCtx,
 						"auxData": map[string]interface{}{
 							"isDefault": true,
 							"type":      "default",
@@ -156,16 +159,23 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			funcDecl = funcDecl[:idx]
 		}
 
-		// Check if there's a pending $eval selector — if so, combine querySelector + userFn
-		// into a single evaluate to avoid Juggler's object lifecycle issues.
-		b.lastQueryMu.RLock()
-		pendingSelector := b.lastQuery[msg.SessionID]
-		pendingAll := b.lastQueryAll[msg.SessionID]
-		b.lastQueryMu.RUnlock()
+		// The $eval combine pattern is only needed for the Juggler backend.
+		// BiDi handles $eval natively via isolated worlds + script.callFunction.
+		pendingSelector := ""
+		pendingAll := false
+		isPuppeteerInternal := false
+		if !b.isBiDi {
+			// Check if there's a pending $eval selector — if so, combine querySelector + userFn
+			// into a single evaluate to avoid Juggler's object lifecycle issues.
+			b.lastQueryMu.RLock()
+			pendingSelector = b.lastQuery[msg.SessionID]
+			pendingAll = b.lastQueryAll[msg.SessionID]
+			b.lastQueryMu.RUnlock()
 
-		isPuppeteerInternal := strings.Contains(funcDecl, "addPageBinding") ||
-			strings.Contains(funcDecl, "puppeteer_") ||
-			strings.Contains(funcDecl, "__ariaQuery")
+			isPuppeteerInternal = strings.Contains(funcDecl, "addPageBinding") ||
+				strings.Contains(funcDecl, "puppeteer_") ||
+				strings.Contains(funcDecl, "__ariaQuery")
+		}
 
 		if pendingSelector != "" && !strings.Contains(funcDecl, "cssQuerySelector") && !isPuppeteerInternal {
 			// For $$eval, Puppeteer sends 2 internal plumbing calls (iterator + collector)
@@ -217,7 +227,8 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		// Intercept Puppeteer's cssQuerySelector pattern — store the selector for the
 		// NEXT callFunctionOn which will be the user's function ($eval pattern).
-		if strings.Contains(funcDecl, "cssQuerySelector") && params.Arguments != nil {
+		// Only needed for Juggler backend.
+		if !b.isBiDi && strings.Contains(funcDecl, "cssQuerySelector") && params.Arguments != nil {
 			var args []json.RawMessage
 			if json.Unmarshal(params.Arguments, &args) == nil && len(args) >= 2 {
 				var selectorArg struct {
@@ -275,6 +286,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		jugglerParams := map[string]interface{}{
 			"functionDeclaration": funcDecl,
 			"returnByValue":      params.ReturnByValue,
+			"awaitPromise":       params.AwaitPromise,
 		}
 
 		// Juggler ALWAYS requires executionContextId.
