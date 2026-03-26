@@ -380,7 +380,7 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 	case "Page.setContent":
 		// Puppeteer uses this to set page HTML content.
-		// Juggler doesn't have a direct equivalent — use Runtime.evaluate.
+		// Use Page.navigate with a data: URI to properly trigger lifecycle events.
 		var params struct {
 			HTML    string `json:"html"`
 			FrameID string `json:"frameId"`
@@ -392,19 +392,25 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			return json.RawMessage(`{}`), nil
 		}
 
-		// Use document.open/write/close to set content
-		expr := fmt.Sprintf(`(function() {
-			document.open();
-			document.write(%s);
-			document.close();
-		})()`, toJSString(params.HTML))
-
-		_, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
-			"expression":    expr,
-			"returnByValue": true,
-		})
+		// Navigate to a data URI — this properly creates a new execution context
+		navParams := map[string]interface{}{
+			"url": "data:text/html," + params.HTML,
+		}
+		if params.FrameID != "" {
+			navParams["frameId"] = params.FrameID
+		}
+		_, err := b.callJuggler(msg.SessionID, "Page.navigate", navParams)
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			// Fallback to document.write
+			expr := fmt.Sprintf(`(function() {
+				document.open();
+				document.write(%s);
+				document.close();
+			})()`, toJSString(params.HTML))
+			b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
+				"expression":    expr,
+				"returnByValue": true,
+			})
 		}
 		return json.RawMessage(`{}`), nil
 

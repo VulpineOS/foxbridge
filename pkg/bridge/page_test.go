@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,7 +112,7 @@ func TestHandlePage_Close(t *testing.T) {
 
 func TestHandlePage_SetContent(t *testing.T) {
 	b, mb := newTestBridge()
-	mb.SetResponse("", "Runtime.evaluate", json.RawMessage(`{"result":{}}`), nil)
+	mb.SetResponse("", "Page.navigate", json.RawMessage(`{"navigationId":"nav-1"}`), nil)
 
 	msg := &cdp.Message{
 		ID:     1,
@@ -127,21 +128,23 @@ func TestHandlePage_SetContent(t *testing.T) {
 		t.Errorf("result = %s, want {}", string(result))
 	}
 
-	// Verify the Runtime.evaluate call was made
-	calls := mb.CallsForMethod("Runtime.evaluate")
+	// Verify the Page.navigate call was made with a data URI
+	calls := mb.CallsForMethod("Page.navigate")
 	if len(calls) == 0 {
-		t.Fatal("expected Runtime.evaluate call for setContent")
+		t.Fatal("expected Page.navigate call for setContent")
 	}
 
-	// The expression should contain the HTML
 	var params map[string]interface{}
 	json.Unmarshal(calls[0].Params, &params)
-	expr, ok := params["expression"].(string)
+	url, ok := params["url"].(string)
 	if !ok {
-		t.Fatal("expression not found in params")
+		t.Fatal("url not found in params")
 	}
-	if len(expr) == 0 {
-		t.Error("expression is empty")
+	if !strings.Contains(url, "data:text/html,") {
+		t.Errorf("url should be data URI, got %s", url)
+	}
+	if !strings.Contains(url, "Hello") {
+		t.Errorf("url should contain HTML content, got %s", url)
 	}
 }
 
