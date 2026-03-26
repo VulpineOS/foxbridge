@@ -411,6 +411,14 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"expression":    expr,
 				"returnByValue": true,
 			})
+		} else {
+			// After data URI navigation, do a dummy evaluate to force the latest
+			// execution context to be resolved. This ensures latestCtx is up-to-date
+			// before Puppeteer calls $eval on the new content.
+			b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
+				"expression":    "0",
+				"returnByValue": true,
+			})
 		}
 		return json.RawMessage(`{}`), nil
 
