@@ -293,6 +293,20 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					if err != nil {
 						return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 					}
+					// Store the objectId to prevent it from being released prematurely.
+					// $() and $$() need the handle to survive through describeNode/resolveNode
+					// and transposeIterableHandle calls.
+					var evalResult struct {
+						Result struct {
+							ObjectID string `json:"objectId"`
+						} `json:"result"`
+					}
+					if json.Unmarshal(result, &evalResult) == nil && evalResult.Result.ObjectID != "" {
+						backendID := b.nextCtxID()
+						b.nodeObjectsMu.Lock()
+						b.nodeObjects[backendID] = evalResult.Result.ObjectID
+						b.nodeObjectsMu.Unlock()
+					}
 					return result, nil
 				}
 			}
@@ -437,6 +451,32 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		result, err := b.callJuggler(msg.SessionID, "Runtime.getObjectProperties", getPropsParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+
+		// Juggler returns {properties: [{name, value}]}, CDP expects
+		// {result: [{name, value, configurable, enumerable, writable, isOwn}]}
+		var jugglerProps struct {
+			Properties []struct {
+				Name  string          `json:"name"`
+				Value json.RawMessage `json:"value"`
+			} `json:"properties"`
+		}
+		if json.Unmarshal(result, &jugglerProps) == nil && jugglerProps.Properties != nil {
+			cdpProps := make([]map[string]interface{}, 0, len(jugglerProps.Properties))
+			for _, p := range jugglerProps.Properties {
+				cdpProps = append(cdpProps, map[string]interface{}{
+					"name":         p.Name,
+					"value":        p.Value,
+					"configurable": true,
+					"enumerable":   true,
+					"writable":     true,
+					"isOwn":        true,
+				})
+			}
+			resp, _ := json.Marshal(map[string]interface{}{
+				"result": cdpProps,
+			})
+			return resp, nil
 		}
 
 		return result, nil

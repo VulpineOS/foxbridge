@@ -429,10 +429,9 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}, cdpSessionID)
 
 		// Re-emit isolated world contexts whenever a new default context appears.
-		// Only needed for BiDi — Juggler handles isolated worlds differently via
-		// the $eval combine pattern. BiDi creates/destroys realms rapidly during
-		// navigation, so we re-emit on every new default context.
-		if b.isBiDi && cdpSessionID != "" {
+		// Both Juggler and BiDi need this — after navigation, the utility world context
+		// is destroyed and Puppeteer needs a new one for $$, $$eval, and other operations.
+		if cdpSessionID != "" {
 			b.isolatedWorldsMu.RLock()
 			worlds := b.isolatedWorlds[cdpSessionID]
 			b.isolatedWorldsMu.RUnlock()
