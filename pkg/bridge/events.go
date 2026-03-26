@@ -823,6 +823,26 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		log.Printf("[event] Browser.requestIntercepted → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, url, cdpSessionID)
 
+		// Emit Network.requestWillBeSent BEFORE Fetch.requestPaused.
+		// Puppeteer needs both events with matching requestId/networkId to process interception.
+		b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
+			"requestId":   ev.RequestID,
+			"loaderId":    ev.RequestID,
+			"documentURL": url,
+			"request": map[string]interface{}{
+				"url":             url,
+				"method":          method,
+				"headers":         headerMap,
+				"initialPriority": "High",
+				"referrerPolicy":  "strict-origin-when-cross-origin",
+			},
+			"timestamp": 0,
+			"wallTime":  0,
+			"initiator": map[string]interface{}{"type": "other"},
+			"type":      resourceType,
+			"frameId":   ev.FrameID,
+		}, cdpSessionID)
+
 		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
 			"requestId": ev.RequestID,
 			"networkId": ev.RequestID,
