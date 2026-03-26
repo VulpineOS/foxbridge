@@ -754,13 +754,22 @@ func (b *Bridge) SetupEventSubscriptions() {
 	b.backend.Subscribe("Browser.requestIntercepted", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
 			RequestID string `json:"requestId"`
-			Request   struct {
+			// Juggler sends request fields at top level (not nested in "request")
+			URL     string `json:"url"`
+			Method  string `json:"method"`
+			Headers []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"headers"`
+			// Nested format for backwards compatibility
+			Request struct {
 				URL     string            `json:"url"`
 				Method  string            `json:"method"`
 				Headers map[string]string `json:"headers"`
 			} `json:"request"`
 			FrameID              string `json:"frameId"`
 			IsNavigationRequest  bool   `json:"isNavigationRequest"`
+			ResourceType         string `json:"resourceType"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			log.Printf("events: failed to parse Browser.requestIntercepted: %v", err)
@@ -787,21 +796,40 @@ func (b *Bridge) SetupEventSubscriptions() {
 			}
 		}
 
-		// Determine resource type from navigation flag
-		resourceType := "Other"
-		if ev.IsNavigationRequest {
-			resourceType = "Document"
+		// Use top-level fields (new Juggler format) or nested request fields (fallback)
+		url := ev.URL
+		method := ev.Method
+		if url == "" {
+			url = ev.Request.URL
+			method = ev.Request.Method
 		}
 
-		log.Printf("[event] Browser.requestIntercepted → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, ev.Request.URL, cdpSessionID)
+		// Convert headers array [{name,value}] to map for CDP
+		headerMap := map[string]string{}
+		for _, h := range ev.Headers {
+			headerMap[h.Name] = h.Value
+		}
+		if len(headerMap) == 0 {
+			headerMap = ev.Request.Headers
+		}
+
+		resourceType := ev.ResourceType
+		if resourceType == "" {
+			resourceType = "Other"
+			if ev.IsNavigationRequest {
+				resourceType = "Document"
+			}
+		}
+
+		log.Printf("[event] Browser.requestIntercepted → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, url, cdpSessionID)
 
 		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
 			"requestId": ev.RequestID,
 			"networkId": ev.RequestID,
 			"request": map[string]interface{}{
-				"url":             ev.Request.URL,
-				"method":          ev.Request.Method,
-				"headers":         ev.Request.Headers,
+				"url":             url,
+				"method":          method,
+				"headers":         headerMap,
 				"initialPriority": "High",
 				"referrerPolicy":  "strict-origin-when-cross-origin",
 			},

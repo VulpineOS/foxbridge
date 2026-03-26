@@ -73,9 +73,10 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			jugglerParams["method"] = params.Method
 		}
 		if len(params.Headers) > 0 {
-			headers := make(map[string]string, len(params.Headers))
-			for _, h := range params.Headers {
-				headers[h.Name] = h.Value
+			// Juggler expects headers as [{name, value}] array, not a map
+			headers := make([]map[string]string, len(params.Headers))
+			for i, h := range params.Headers {
+				headers[i] = map[string]string{"name": h.Name, "value": h.Value}
 			}
 			jugglerParams["headers"] = headers
 		}

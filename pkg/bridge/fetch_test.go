@@ -157,15 +157,17 @@ func TestFetchContinueRequest_HeaderConversion(t *testing.T) {
 		t.Errorf("requestId = %v, want req-1", params["requestId"])
 	}
 
-	headers, ok := params["headers"].(map[string]interface{})
+	// Headers are now [{name, value}] array format for Juggler
+	headers, ok := params["headers"].([]interface{})
 	if !ok {
-		t.Fatalf("headers not a map: %T", params["headers"])
+		t.Fatalf("headers not an array: %T", params["headers"])
 	}
-	if headers["Content-Type"] != "application/json" {
-		t.Errorf("Content-Type = %v, want application/json", headers["Content-Type"])
+	if len(headers) != 2 {
+		t.Fatalf("expected 2 headers, got %d", len(headers))
 	}
-	if headers["Authorization"] != "Bearer tok" {
-		t.Errorf("Authorization = %v, want Bearer tok", headers["Authorization"])
+	h0 := headers[0].(map[string]interface{})
+	if h0["name"] != "Content-Type" || h0["value"] != "application/json" {
+		t.Errorf("header[0] = %v, want Content-Type: application/json", h0)
 	}
 }
 
