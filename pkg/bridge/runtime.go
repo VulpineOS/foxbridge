@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -240,7 +241,17 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			}
 			result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalParams)
 			if err != nil {
-				return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+				// Retry once with fresh latest context — setContent may have changed it
+				if strings.Contains(err.Error(), "Failed to find execution context") {
+					time.Sleep(100 * time.Millisecond)
+					if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+						evalParams["executionContextId"] = latest
+					}
+					result, err = b.callJuggler(msg.SessionID, "Runtime.evaluate", evalParams)
+				}
+				if err != nil {
+					return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+				}
 			}
 			return result, nil
 		}
