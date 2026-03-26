@@ -385,6 +385,22 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return json.RawMessage(`{}`), nil
 		}
 
+		// Skip releasing objectIds stored in nodeObjects — these are element handles
+		// from querySelector that are reused by describeNode/resolveNode/click flows.
+		// Releasing them would break subsequent callFunctionOn calls with the same handle.
+		b.nodeObjectsMu.RLock()
+		isStored := false
+		for _, storedID := range b.nodeObjects {
+			if storedID == params.ObjectID {
+				isStored = true
+				break
+			}
+		}
+		b.nodeObjectsMu.RUnlock()
+		if isStored {
+			return json.RawMessage(`{}`), nil
+		}
+
 		disposeParams := map[string]interface{}{
 			"objectId": params.ObjectID,
 		}
