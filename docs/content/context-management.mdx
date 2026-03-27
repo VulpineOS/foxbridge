@@ -1,0 +1,88 @@
+# Context Management
+
+Execution contexts are the bridge between CDP's numeric context IDs and Juggler's string-based context identifiers. Foxbridge maintains a bidirectional mapping and tracks the latest context per session to handle navigation and isolated worlds.
+
+## Context ID Translation
+
+CDP uses integer execution context IDs (e.g., `101`, `102`). Juggler uses opaque strings (e.g., `"ctx-abc-123"`). Foxbridge allocates numeric IDs from a monotonic counter starting at 100 and maps them in `ctxMap`:
+
+```
+CDP contextId: 101  →  Juggler executionContextId: "ctx-abc-123"
+CDP contextId: 102  →  Juggler executionContextId: "ctx-def-456"
+```
+
+When `Runtime.evaluate` receives a `contextId` parameter, foxbridge looks up the Juggler equivalent in `ctxMap` before forwarding.
+
+## Latest Context Tracking
+
+The `latestCtx` map stores the most recent Juggler execution context for each session. This is critical because:
+
+- Navigation destroys all contexts and creates new ones
+- Puppeteer may send evaluate calls with stale context IDs
+- The latest context is always the correct one for new evaluations
+
+When a `Runtime.executionContextCreated` event arrives, foxbridge updates `latestCtx[jugglerSessionID]` to the new context. All subsequent `evaluate` and `callFunctionOn` calls prefer this latest context over the caller's requested context ID.
+
+## Navigation Lifecycle
+
+When a page navigates:
+
+```
+1. Juggler: Runtime.executionContextDestroyed (old context)
+   → foxbridge emits Runtime.executionContextDestroyed
+   → removes old ctxMap entry
+
+2. Juggler: Runtime.executionContextsCleared
+   → foxbridge emits Runtime.executionContextsCleared
+   → marks session in pendingContextClear
+
+3. Juggler: Runtime.executionContextCreated (new context)
+   → foxbridge allocates new numeric ID
+   → adds to ctxMap, updates latestCtx
+   → emits Runtime.executionContextCreated
+   → re-emits any tracked isolated worlds (see below)
+```
+
+## Isolated Worlds
+
+Puppeteer creates isolated execution contexts via `Page.createIsolatedWorld` for its utility functions (`__puppeteer_utility_world__`). These contexts are destroyed on navigation. Foxbridge tracks them in `isolatedWorlds` by CDP session ID and re-emits them when a new default context appears after navigation.
+
+```go
+isolatedWorlds["cdp-session-uuid"] = [
+    {WorldName: "__puppeteer_utility_world__", FrameID: "mainframe-1"},
+]
+```
+
+After `executionContextsCleared` + a new `executionContextCreated`, foxbridge checks `pendingContextClear`. If set, it emits a synthetic `Runtime.executionContextCreated` for each tracked isolated world, mapped to the new default context. This keeps Puppeteer's utility world functional across navigations.
+
+## The $eval Combine Pattern
+
+Puppeteer's `$eval` and `$$eval` methods send a multi-step sequence:
+
+1. `callFunctionOn` with `cssQuerySelector` -- find the element
+2. `callFunctionOn` with the user's function -- operate on it
+
+Juggler's object lifecycle makes step 2 fail because the element handle from step 1 may be garbage-collected before step 2 executes. Foxbridge solves this by intercepting the pattern:
+
+1. When `callFunctionOn` contains `cssQuerySelector`, foxbridge stores the CSS selector in `lastQuery[sessionID]`
+2. The next non-internal `callFunctionOn` is the user function -- foxbridge combines both into a single `Runtime.evaluate`:
+
+```javascript
+// Combined into one atomic evaluate call:
+(function() {
+  const el = document.querySelector("h1");
+  return (function(el) { return el.textContent; })(el);
+})()
+```
+
+For `$$eval`, foxbridge skips 3 intermediate plumbing calls (iterator, collector, mapper) before combining with the user function.
+
+## Object ID Preservation
+
+DOM methods like `querySelector` return element handles with `objectId` and `backendNodeId`. Foxbridge stores these in `nodeObjects` so that subsequent `describeNode`, `resolveNode`, and `callFunctionOn` calls can reference the same element.
+
+When `releaseObject` is called, foxbridge checks `nodeObjects` first. If the object is stored there, it skips the Juggler `disposeObject` call to prevent breaking element handle chains used by click, type, and other input operations.
+
+## BiDi Differences
+
+On the BiDi backend, foxbridge emits `Runtime.executionContextsCleared` on navigation since BiDi lacks an explicit equivalent. Context destruction also cleans up all derived isolated world context IDs pointing to the same realm. The `$eval` combine pattern is disabled for BiDi because `script.callFunction` handles object binding natively.

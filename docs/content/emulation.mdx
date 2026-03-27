@@ -1,0 +1,100 @@
+# Device Emulation
+
+Foxbridge translates CDP Emulation domain methods to Juggler's browser-level overrides. All emulation settings are scoped to the browser context, enabling per-agent device profiles.
+
+## Viewport
+
+`Emulation.setDeviceMetricsOverride` sets the viewport dimensions:
+
+```
+CDP: Emulation.setDeviceMetricsOverride({width: 375, height: 812, deviceScaleFactor: 3, mobile: true})
+  → Juggler: Browser.setDefaultViewport({width: 375, height: 812, deviceScaleFactor: 3, browserContextId: "ctx-abc"})
+```
+
+The `mobile` flag is not forwarded -- Juggler does not have a separate mobile mode. Mobile behavior is achieved through viewport size, user agent, and touch emulation combined.
+
+`Emulation.clearDeviceMetricsOverride` is a no-op.
+
+## User Agent
+
+User agent can be set through two CDP paths. Both route to the same Juggler method:
+
+| CDP Method | Juggler Method |
+|-----------|---------------|
+| `Network.setUserAgentOverride` | `Browser.setUserAgentOverride` |
+| `Emulation.setUserAgentOverride` | `Browser.setUserAgentOverride` |
+
+```javascript
+// Both of these produce the same Juggler call:
+await page.setUserAgent('Mozilla/5.0 ...');
+// or via CDP session:
+await client.send('Emulation.setUserAgentOverride', { userAgent: '...' });
+```
+
+The `browserContextId` is automatically attached from the session.
+
+## Geolocation
+
+```
+CDP: Emulation.setGeolocationOverride({latitude: 37.7749, longitude: -122.4194, accuracy: 100})
+  → Juggler: Browser.setGeolocationOverride({latitude: 37.7749, longitude: -122.4194, accuracy: 100, browserContextId: "ctx-abc"})
+```
+
+If `accuracy` is zero or negative, foxbridge sets it to `1` to avoid Juggler validation errors. All three fields are optional -- omitting them clears the override.
+
+## Timezone
+
+```
+CDP: Emulation.setTimezoneOverride({timezoneId: "America/New_York"})
+  → Juggler: Browser.setTimezoneOverride({timezoneId: "America/New_York", browserContextId: "ctx-abc"})
+```
+
+## Locale
+
+```
+CDP: Emulation.setLocaleOverride({locale: "fr-FR"})
+  → Juggler: Browser.setLocaleOverride({locale: "fr-FR", browserContextId: "ctx-abc"})
+```
+
+## Media Type and Features
+
+`Emulation.setEmulatedMedia` is sent to the page session (not the browser):
+
+```
+CDP: Emulation.setEmulatedMedia({media: "print", features: [{"name": "prefers-color-scheme", "value": "dark"}]})
+  → Juggler: Page.setEmulatedMedia({type: "print", features: [{"name": "prefers-color-scheme", "value": "dark"}]})
+```
+
+Note that the CDP `media` field maps to Juggler's `type` field.
+
+## Touch Emulation
+
+```
+CDP: Emulation.setTouchEmulationEnabled({enabled: true})
+  → Juggler: Browser.setTouchOverride({enabled: true, browserContextId: "ctx-abc"})
+```
+
+## JavaScript Enable/Disable
+
+`Emulation.setScriptExecutionDisabled` does not have a direct Juggler equivalent. Foxbridge uses a `Runtime.evaluate` call to toggle the `docShell.allowJavascript` flag:
+
+```javascript
+void(document.docShell && (document.docShell.allowJavascript = false))
+```
+
+This is a best-effort implementation -- not all pages support `docShell` access. Foxbridge returns success regardless.
+
+## No-Op Methods
+
+`setScrollbarsHidden`, `setDefaultBackgroundColorOverride`, and `clearDeviceMetricsOverride` return success without action -- Juggler has no equivalents.
+
+## Context Isolation
+
+All emulation overrides include `browserContextId` when available. This means different browser contexts (and thus different agents) can have completely different emulation profiles:
+
+```
+Agent A (ctx-1): viewport 1920x1080, timezone UTC, locale en-US
+Agent B (ctx-2): viewport 375x812, timezone Asia/Tokyo, locale ja-JP
+```
+
+Both agents share the same Firefox process but see different emulated environments.

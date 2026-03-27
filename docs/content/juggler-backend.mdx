@@ -1,0 +1,94 @@
+# Juggler Backend
+
+The Juggler backend communicates with Camoufox (Firefox 146) via pipe file descriptors. It is the default and most complete backend, passing 74/74 Puppeteer integration tests.
+
+## Pipe Transport
+
+Foxbridge spawns Camoufox with `--remote-debugging-pipe` which opens FD 3 (read) and FD 4 (write) for the automation protocol. Messages are JSON terminated by a null byte (`\x00`), matching Firefox's `nsRemoteDebuggingPipe.cpp` framing.
+
+```
+foxbridge → FD 4 → {"id":1,"method":"Browser.enable","params":{}}\x00 → Firefox
+foxbridge ← FD 3 ← {"id":1,"result":{"..."}}\x00 ← Firefox
+foxbridge ← FD 3 ← {"method":"Browser.attachedToTarget","params":{...}}\x00 ← Firefox (event)
+```
+
+The `PipeTransport` uses a buffered reader (`bufio.ReaderSize` 64KB) for FD 3 and a mutex-protected writer for FD 4. Messages are framed by reading until the null byte delimiter.
+
+## The $eval Combine Pattern
+
+Juggler's object handle lifecycle is stricter than Chrome's -- handles can be garbage-collected between sequential `callFunctionOn` calls. This breaks Puppeteer's `$eval` pattern, which sends two separate calls:
+
+1. `callFunctionOn(cssQuerySelector, [handle, selector])` -- returns element handle
+2. `callFunctionOn(userFunction, [elementHandle])` -- operates on element
+
+Foxbridge intercepts this pattern and combines both into a single `Runtime.evaluate`:
+
+```javascript
+(function() {
+  const el = document.querySelector("h1");
+  return (userFunction)(el);
+})()
+```
+
+Detection works by inspecting the `functionDeclaration` for `cssQuerySelector` and storing the selector. The next non-internal `callFunctionOn` triggers the combine. Puppeteer-internal functions (identified by signatures like `addPageBinding`, `__ariaQuery`, `IntersectionObserver`) are excluded.
+
+For `$$eval`, foxbridge skips 3 intermediate plumbing calls before combining:
+
+| Call | Action |
+|------|--------|
+| cssQuerySelectorAll | Store selector, execute real querySelectorAll |
+| iterator plumbing | Skip (return dummy object) |
+| collector plumbing | Skip |
+| mapper plumbing | Skip |
+| User function | Combine with stored selector into single evaluate |
+
+## Mouse Button Translation
+
+CDP sends mouse buttons as strings; Juggler expects numbers and a bitmask:
+
+| CDP `button` | Juggler `button` | Juggler `buttons` (on mousedown) |
+|-------------|-----------------|----------------------------------|
+| `"left"` | `0` | `1` |
+| `"middle"` | `1` | `4` |
+| `"right"` | `2` | `2` |
+| `"none"` | `0` | `0` |
+
+The `buttons` bitmask is only set during `mousedown` events. For `mousemove` and `mouseup`, it is `0`.
+
+## Mouse Type Translation
+
+| CDP `type` | Juggler `type` |
+|-----------|---------------|
+| `mouseMoved` | `mousemove` |
+| `mousePressed` | `mousedown` |
+| `mouseReleased` | `mouseup` |
+| `mouseWheel` | `wheel` |
+
+## Keyboard Type Translation
+
+CDP uses camelCase key event types; Juggler uses lowercase:
+
+| CDP `type` | Juggler `type` |
+|-----------|---------------|
+| `keyDown` | `keydown` |
+| `keyUp` | `keyup` |
+| `rawKeyDown` | `keydown` |
+| `char` | `keypress` |
+
+The `rawKeyDown` to `keydown` mapping is important -- CDP sends `rawKeyDown` for physical key presses while Juggler only understands `keydown`.
+
+## Touch ID Stripping
+
+CDP includes an `id` field in each touch point. Juggler rejects touch events with the `id` field present. Foxbridge strips `id` by destructuring each touch point and only forwarding `x`, `y`, `radiusX`, `radiusY`, and `force`.
+
+## Request Interception
+
+Juggler handles request interception at the browser level, not the page level. The flow:
+
+1. `Fetch.enable` on a page session → foxbridge resolves `browserContextId` from the session and calls `Browser.setRequestInterception({enabled: true, browserContextId})`
+2. Juggler emits `Browser.requestIntercepted` (browser event, no session) → foxbridge matches the `frameId` to a CDP page session and emits `Fetch.requestPaused` on that session
+3. `Fetch.continueRequest` / `Fetch.fulfillRequest` / `Fetch.failRequest` → translated to `Browser.continueInterceptedRequest` / `Browser.fulfillInterceptedRequest` / `Browser.abortInterceptedRequest`
+
+## awaitPromise Support
+
+Juggler's `Runtime.evaluate` does not support `awaitPromise`. Foxbridge wraps the expression in an async IIFE: `(async () => { return await (expr) })()`.

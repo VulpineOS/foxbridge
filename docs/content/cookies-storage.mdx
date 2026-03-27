@@ -1,0 +1,93 @@
+# Cookies & Storage
+
+Foxbridge translates CDP cookie operations to Juggler's `Browser.setCookies`, `Browser.getCookies`, and `Browser.clearCookies` methods. All cookie operations are scoped to a browser context for isolation between agents.
+
+## Cookie Methods
+
+| CDP Method | Juggler Method | Behavior |
+|-----------|---------------|----------|
+| `Network.setCookies` | `Browser.setCookies` | Set one or more cookies |
+| `Network.getCookies` | `Browser.getCookies` | Get all cookies for context |
+| `Network.deleteCookies` | `Browser.clearCookies` | Clears all cookies for context |
+| `Network.clearBrowserCookies` | `Browser.clearCookies` | Clears all cookies for context |
+
+## Context Scoping
+
+Every cookie operation includes the `browserContextId` if the CDP session is associated with one. Foxbridge resolves this automatically from the session:
+
+```
+CDP: Network.setCookies({cookies: [...], sessionId: "page-session-123"})
+  → Session lookup: browserContextId = "ctx-abc"
+  → Juggler: Browser.setCookies({cookies: [...], browserContextId: "ctx-abc"})
+```
+
+This means cookies set in one browser context are invisible to other contexts -- essential for multi-agent isolation in VulpineOS.
+
+## setCookies
+
+Cookies are forwarded to Juggler as-is. The cookie format is compatible between CDP and Juggler:
+
+```javascript
+await page.setCookie({
+  name: 'session',
+  value: 'abc123',
+  domain: '.example.com',
+  path: '/',
+  httpOnly: true,
+  secure: true,
+});
+```
+
+## getCookies
+
+CDP's `getCookies` accepts an optional `urls` parameter to filter cookies. Juggler does not support URL filtering -- it returns all cookies for the browser context. Foxbridge passes through all cookies regardless of the `urls` parameter.
+
+```
+CDP: Network.getCookies({urls: ["https://example.com"]})
+  → Juggler: Browser.getCookies({browserContextId: "ctx-abc"})
+  → Returns ALL cookies for the context (no URL filter)
+```
+
+Puppeteer performs its own client-side filtering, so this difference is transparent.
+
+## deleteCookies
+
+CDP's `deleteCookies` accepts specific cookie identifiers (name, domain, path). Juggler has no per-cookie delete -- only `Browser.clearCookies` which removes all cookies for a context. Foxbridge maps `deleteCookies` to `clearCookies` as a fallback.
+
+This means deleting a single cookie actually clears all cookies for the context. In practice, Puppeteer calls `deleteCookies` before `setCookies` to ensure a clean slate, so this behavior is acceptable.
+
+## clearBrowserCookies
+
+Maps directly to `Browser.clearCookies` with the context ID:
+
+```
+CDP: Network.clearBrowserCookies
+  → Juggler: Browser.clearCookies({browserContextId: "ctx-abc"})
+```
+
+## BiDi Cookie Format
+
+When using the BiDi backend, cookie values are wrapped in typed objects. Foxbridge handles the translation transparently:
+
+```
+// CDP / Juggler format
+{name: "sid", value: "abc123", domain: ".example.com"}
+
+// BiDi format (storage.setCookie)
+{name: "sid", value: {type: "string", value: "abc123"}, domain: ".example.com"}
+```
+
+The reverse translation happens when reading cookies via `storage.getCookies`. The bridge layer never sees BiDi format -- the BiDi client handles this internally.
+
+## Multi-Agent Cookie Flow (VulpineOS)
+
+In VulpineOS, each agent gets its own browser context with isolated cookies:
+
+```
+Agent A (ctx-1): setCookies → session=abc → only visible in ctx-1
+Agent B (ctx-2): setCookies → session=xyz → only visible in ctx-2
+Agent A: getCookies → sees only session=abc
+Agent B: getCookies → sees only session=xyz
+```
+
+VulpineOS persists cookies to the vault database when agents are deactivated, and restores them on reactivation.

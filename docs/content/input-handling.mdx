@@ -1,0 +1,95 @@
+# Input Handling
+
+Foxbridge translates CDP input events to Juggler's `Page.dispatchMouseEvent`, `Page.dispatchKeyEvent`, `Page.dispatchTouchEvent`, and `Page.insertText` methods. Each event type requires specific field mapping.
+
+## Mouse Events
+
+### Type Translation
+
+| CDP `type` | Juggler `type` |
+|-----------|---------------|
+| `mouseMoved` | `mousemove` |
+| `mousePressed` | `mousedown` |
+| `mouseReleased` | `mouseup` |
+| `mouseWheel` | `wheel` |
+
+### Button Mapping
+
+CDP sends button names as strings. Juggler expects numeric values:
+
+| CDP `button` | Juggler `button` |
+|-------------|-----------------|
+| `"left"` | `0` |
+| `"middle"` | `1` |
+| `"right"` | `2` |
+| `"none"` | `0` |
+
+### Buttons Bitmask
+
+Juggler requires a `buttons` bitmask field on every mouse event. This indicates which buttons are currently held. The bitmask is only populated during `mousedown`:
+
+| Button | Bitmask value |
+|--------|--------------|
+| Left | `1` |
+| Middle | `4` |
+| Right | `2` |
+
+For `mousemove`, `mouseup`, and `wheel` events, `buttons` is always `0`.
+
+### Additional Fields
+
+| Field | Passed through | Notes |
+|-------|---------------|-------|
+| `x`, `y` | Yes | Coordinates in CSS pixels |
+| `clickCount` | Yes | 1 for click, 2 for double-click |
+| `modifiers` | Yes | Bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8 |
+| `deltaX`, `deltaY` | Conditional | Only included when non-zero (wheel events) |
+
+## Keyboard Events
+
+### Type Translation
+
+| CDP `type` | Juggler `type` |
+|-----------|---------------|
+| `keyDown` | `keydown` |
+| `keyUp` | `keyup` |
+| `rawKeyDown` | `keydown` |
+| `char` | `keypress` |
+
+The `rawKeyDown` mapping is the most important -- CDP uses this for physical key presses, but Juggler only understands `keydown`. The translation is a simple `strings.ToLower()` with a special case for `rawkeydown`.
+
+### Field Mapping
+
+| CDP Field | Juggler Field | Notes |
+|-----------|--------------|-------|
+| `key` | `key` | Key name (e.g., `"a"`, `"Enter"`) |
+| `code` | `code` | Physical key (e.g., `"KeyA"`, `"Enter"`) |
+| `text` | `text` | Character generated (only if non-empty) |
+| `windowsVirtualKeyCode` | `keyCode` | Numeric key code |
+| `modifiers` | -- | Not forwarded (Juggler uses separate modifier keys) |
+
+Foxbridge also adds `location: 0` and `repeat: false` as defaults, which Juggler requires.
+
+## Touch Events
+
+### ID Field Stripping
+
+CDP includes an `id` field in each touch point to track individual fingers. Juggler rejects touch events that contain `id`. Foxbridge destructures each touch point and only forwards supported fields:
+
+```go
+// CDP touch point (has id)
+{"id": 0, "x": 100, "y": 200, "radiusX": 1, "radiusY": 1, "force": 0.5}
+
+// Juggler touch point (no id)
+{"x": 100, "y": 200, "radiusX": 1, "radiusY": 1, "force": 0.5}
+```
+
+Optional fields (`radiusX`, `radiusY`, `force`) are only included when greater than zero. The `modifiers` bitmask is passed through unchanged.
+
+## insertText
+
+`Input.insertText` maps directly to `Page.insertText` with no transformation. Used for characters that cannot be represented as key events (emoji, CJK).
+
+## Puppeteer Click Sequence
+
+A `page.click(selector)` generates three events: `mouseMoved` (translated to `mousemove`), `mousePressed` (translated to `mousedown` with `buttons: 1`), and `mouseReleased` (translated to `mouseup` with `buttons: 0`).

@@ -1,0 +1,92 @@
+# Session Model
+
+Foxbridge implements a **dual-session model** to match Chrome's internal architecture. Puppeteer expects two CDP sessions per browser tab -- a tab session and a page session. Firefox has only one session per target, so foxbridge synthesizes the pair.
+
+## Why Two Sessions?
+
+In Chrome, every tab creates two targets:
+
+1. A **browser-level target** (type `"page"`) managed by the browser process
+2. A **content-level target** (type `"page"`) where JavaScript runs
+
+Puppeteer attaches to both. The tab session handles lifecycle (close, auto-attach children). The page session handles content (evaluate, navigate, input). Firefox/Juggler has a single session per page, so foxbridge fakes the Chrome model.
+
+## Session Pair Structure
+
+```
+Browser Session (no sessionID — browser-level)
+  │
+  ├── Tab Session (CDP sessionID: uuid-1)
+  │     type: "tab"
+  │     targetId: tab-target-id
+  │     Handles: Target.setAutoAttach (emits page attachment)
+  │
+  └── Page Session (CDP sessionID: uuid-2)
+        type: "page"
+        targetId: page-target-id
+        jugglerSessionId: actual-juggler-session
+        Handles: all content methods (evaluate, navigate, input)
+```
+
+Both sessions map to the **same** Juggler session internally. Commands on the page session are forwarded to Juggler; commands on the tab session are handled locally.
+
+## Auto-Attach Flow
+
+Puppeteer discovers targets through a specific sequence:
+
+```
+1. Client sends Target.setAutoAttach on browser session (sessionID="")
+2. Foxbridge emits Target.attachedToTarget for the TAB
+     → sessionId: uuid-1, type: "page", targetId: tab-xxx
+
+3. Client sends Target.setAutoAttach on the TAB session (sessionID=uuid-1)
+4. Foxbridge emits Target.attachedToTarget for the PAGE
+     → sessionId: uuid-2, type: "page", targetId: page-xxx
+
+5. Client uses uuid-2 for all page operations
+```
+
+## Pending Target Queue
+
+Targets can arrive from Juggler (`Browser.attachedToTarget`) before the client calls `setAutoAttach`. These are queued in `autoAttach.pending` and emitted retroactively once auto-attach is enabled.
+
+```
+Juggler: attachedToTarget (session-abc)
+  → foxbridge queues {tab-uuid, page-uuid, juggler-session-abc}
+
+Client: Target.setAutoAttach({autoAttach: true})
+  → foxbridge emits all pending tab attachments
+
+Client: Target.setAutoAttach on tab-uuid
+  → foxbridge emits the page attachment
+```
+
+## Session Manager
+
+The `SessionManager` maintains three indexes for fast lookup:
+
+| Index | Key | Use |
+|-------|-----|-----|
+| `sessions` | CDP session ID | Primary lookup for all handlers |
+| `targets` | Target ID | Target.closeTarget, Target.getTargetInfo |
+| `jugglerSessions` | Juggler session ID | Event routing (map Juggler events to CDP sessions) |
+
+## Target Destruction
+
+When a target closes:
+
+1. Foxbridge emits `Target.detachedFromTarget` for the page session (on the tab session)
+2. Foxbridge emits `Target.detachedFromTarget` for the tab session (on the browser session)
+3. Foxbridge emits `Target.targetDestroyed` for both target IDs
+4. Both sessions are removed from the `SessionManager`
+5. The `autoAttach.pairs` entry is cleaned up
+
+These events are emitted **before** the Juggler close call returns, so Puppeteer can unblock its `waitForTarget` promises.
+
+## Worker Targets
+
+Workers (web workers, service workers) use a simpler single-session model. They get one CDP session and one target -- no tab/page split. The `type` field distinguishes them (`"worker"` or `"service_worker"`).
+
+## Browser Contexts
+
+Browser contexts (incognito-like isolated sessions) are tracked on each `SessionInfo`. When a cookie or emulation command includes a `sessionID`, foxbridge looks up the `browserContextId` from the session and forwards it to Juggler. This enables per-context isolation for cookies, storage, viewport, geolocation, and user agent.

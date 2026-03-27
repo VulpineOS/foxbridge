@@ -1,0 +1,93 @@
+# Contributing
+
+## Repository Structure
+
+```
+foxbridge/
+├── cmd/foxbridge/main.go      # CLI entry point
+├── pkg/
+│   ├── backend/
+│   │   ├── backend.go         # Backend interface
+│   │   ├── juggler/           # Juggler pipe transport + client
+│   │   └── bidi/              # BiDi WebSocket client
+│   ├── bridge/
+│   │   ├── bridge.go          # Main router + shared state
+│   │   ├── target.go          # Target domain handler
+│   │   ├── page.go            # Page domain handler
+│   │   ├── runtime.go         # Runtime domain handler
+│   │   ├── input.go           # Input domain handler
+│   │   ├── network.go         # Network domain handler
+│   │   ├── emulation.go       # Emulation domain handler
+│   │   ├── dom.go             # DOM domain handler
+│   │   ├── fetch.go           # Fetch (request interception) handler
+│   │   ├── events.go          # Event subscriptions + translation
+│   │   ├── stub.go            # Stub domains (no-op)
+│   │   └── *_test.go          # Unit tests per domain
+│   ├── cdp/
+│   │   ├── server.go          # WebSocket server + HTTP endpoints
+│   │   └── session.go         # Session manager (3-way index)
+│   └── firefox/               # Firefox process management
+├── tests/                     # Puppeteer integration tests
+└── docs/                      # Documentation site
+```
+
+## Adding a New CDP Domain
+
+1. **Create the handler file** `pkg/bridge/yourdomain.go` with a `handleYourDomain()` function following the same pattern as existing handlers (switch on method, translate params, call `callJuggler()`, return result).
+
+2. **Register the route** in `HandleMessage` in `bridge.go` with `strings.HasPrefix(method, "YourDomain.")`.
+
+3. **Write tests** in `pkg/bridge/yourdomain_test.go` using the mock backend.
+
+## Adding Event Translation
+
+Add a subscription in `SetupEventSubscriptions()` in `events.go`. Use `GetByJugglerSession` to find the CDP session, then `emitEvent` to broadcast. Include the `sessionID` to scope events to a specific session.
+
+## Test Infrastructure
+
+### mockBackend
+
+All unit tests use `mockBackend` from `testutil_test.go`. It implements `backend.Backend` and records all calls:
+
+```go
+func TestSomething(t *testing.T) {
+    mb := newMockBackend()
+    sessions := cdp.NewSessionManager()
+    server := cdp.NewServer(0, nil, sessions)
+    b := New(mb, sessions, server)
+
+    // Preconfigure a response
+    mb.SetResponse("session-1", "Juggler.method", json.RawMessage(`{"result": "ok"}`), nil)
+
+    // Send a CDP message
+    result, err := b.handleYourDomain(nil, &cdp.Message{
+        Method:    "YourDomain.someMethod",
+        SessionID: "cdp-session-1",
+        Params:    json.RawMessage(`{}`),
+    })
+
+    // Verify the Juggler call was made
+    call := mb.LastCall()
+    assert(call.Method == "Juggler.method")
+}
+```
+
+Use `SetResponse("", method, ...)` for wildcard matching. The mock records all calls in `mb.calls` for inspection.
+
+## Running Tests
+
+```bash
+go test ./...              # All unit tests
+go test -race ./...        # With race detector
+go test ./pkg/bridge/ -v   # Single package
+cd tests && npm test       # Integration tests (requires browser)
+```
+
+## Style Guidelines
+
+- Each domain handler is a single file with a single `handle*` function
+- Use `callJuggler()` for all backend calls (handles session resolution)
+- Use `marshalResult()` to build JSON responses
+- Return `json.RawMessage("{}"), nil` for no-op and success-with-no-data methods
+- Return `nil, &cdp.Error{Code: -32000, Message: err.Error()}` for errors
+- All shared state maps must be mutex-protected

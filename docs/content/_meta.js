@@ -1,12 +1,20 @@
 export default {
   index: 'Introduction',
   'quick-start': 'Quick Start',
+  architecture: 'Architecture',
   '---protocol': {
     title: 'Protocol Translation',
     type: 'separator',
   },
   'cdp-coverage': 'CDP Domain Coverage',
   'event-translation': 'Event Translation',
+  'session-model': 'Session Model',
+  'context-management': 'Context Management',
+  '---backends': {
+    title: 'Backends',
+    type: 'separator',
+  },
+  'juggler-backend': 'Juggler Backend',
   'bidi-backend': 'BiDi Backend',
   '---features': {
     title: 'Features',
@@ -15,16 +23,21 @@ export default {
   'request-interception': 'Request Interception',
   'performance-metrics': 'Performance Metrics',
   'pdf-generation': 'PDF Generation',
+  'input-handling': 'Input Handling',
+  'cookies-storage': 'Cookies & Storage',
+  'emulation': 'Device Emulation',
   '---integration': {
     title: 'Integration',
     type: 'separator',
   },
-  'vulpineos': 'VulpineOS Integration',
-  'puppeteer': 'Puppeteer Usage',
+  'vulpineos': 'VulpineOS',
+  'puppeteer': 'Puppeteer',
+  'openclaw': 'OpenClaw',
   '---reference': {
     title: 'Reference',
     type: 'separator',
   },
   'cli-reference': 'CLI Reference',
   'testing': 'Testing',
+  'contributing': 'Contributing',
 }

@@ -1,0 +1,93 @@
+# Architecture
+
+Foxbridge is a protocol proxy with four layers: a CDP WebSocket server, a bridge router, domain handlers, and a backend abstraction. Every CDP message flows through all four before reaching Firefox.
+
+## System Diagram
+
+```
+CDP Client (Puppeteer, OpenClaw, etc.)
+  │
+  ▼ WebSocket (ws://localhost:9222/devtools/browser/foxbridge)
+┌──────────────────────────────────────────────────────────┐
+│  CDP Server (pkg/cdp/server.go)                          │
+│    Accepts WS connections, HTTP discovery (/json/version)│
+│    Frames CDP JSON messages, routes to Bridge            │
+├──────────────────────────────────────────────────────────┤
+│  Session Manager (pkg/cdp/session.go)                    │
+│    3-way index: CDP sessionID ↔ Juggler sessionID ↔      │
+│    targetID. Tracks URL, frameID, browserContextID       │
+├──────────────────────────────────────────────────────────┤
+│  Bridge Router (pkg/bridge/bridge.go)                    │
+│    Dispatches by domain prefix → domain handler          │
+│    Owns ctxMap, loaderMap, latestCtx, isolatedWorlds,    │
+│    nodeObjects, lastQuery, lastDialog, pdfStreams         │
+├──────────────────────────────────────────────────────────┤
+│  Domain Handlers                                         │
+│    target.go  page.go  runtime.go  input.go  network.go │
+│    emulation.go  dom.go  fetch.go  events.go  stub.go   │
+├──────────────────────────────────────────────────────────┤
+│  Backend Interface (pkg/backend/backend.go)              │
+│    Call(sessionID, method, params) → (result, error)     │
+│    Subscribe(event, handler)                             │
+│    Close()                                               │
+└──────────────────────────────────────────────────────────┘
+  │
+  ▼ Pipe FD 3/4 (Juggler) or WebSocket (BiDi)
+┌──────────────────────────────────────────────────────────┐
+│  Firefox / Camoufox                                      │
+└──────────────────────────────────────────────────────────┘
+```
+
+## Message Flow
+
+A CDP message like `Runtime.evaluate` follows this path:
+
+1. **CDP Server** receives the WebSocket frame and parses the JSON `Message` (id, method, params, sessionID).
+2. **Bridge.HandleMessage** matches the domain prefix (`Runtime.`) and calls `handleRuntime()`.
+3. **Domain handler** translates CDP params to Juggler params, resolves the CDP session to a Juggler session via `resolveSession()`, and calls `callJuggler()`.
+4. **Backend.Call** sends the translated message over the pipe (Juggler) or WebSocket (BiDi), waits for the response, and returns it.
+5. **Domain handler** transforms the Juggler response into CDP format and returns it.
+6. **Bridge.HandleMessage** wraps the result into a CDP response with the original message ID and sends it back.
+
+## Domain Routing
+
+The bridge dispatches on method prefix using a `switch` statement:
+
+| Prefix | Handler | File |
+|--------|---------|------|
+| `Target.*` | `handleTarget()` | target.go |
+| `Page.*` | `handlePage()` | page.go |
+| `Runtime.*` | `handleRuntime()` | runtime.go |
+| `Input.*` | `handleInput()` | input.go |
+| `Network.*` | `handleNetwork()` | network.go |
+| `Emulation.*` | `handleEmulation()` | emulation.go |
+| `DOM.*` | `handleDOM()` | dom.go |
+| `Fetch.*` | `handleFetch()` | fetch.go |
+| `Performance.*` | `handlePerformance()` | performance.go |
+| `IO.*` | `handleIO()` | io.go |
+| `Accessibility.*` | `handleAccessibility()` | accessibility.go |
+| `Console.*` | `handleConsole()` | console.go |
+| Everything else | `handleStub()` | stub.go |
+
+## Backend Abstraction
+
+The `Backend` interface has three methods:
+
+```go
+type Backend interface {
+    Call(sessionID, method string, params json.RawMessage) (json.RawMessage, error)
+    Subscribe(event string, handler EventHandler)
+    Close() error
+}
+```
+
+Two implementations exist:
+
+- **Juggler** (`pkg/backend/juggler/`) -- pipe transport over FD 3/4 with null-byte framing. Used with Camoufox.
+- **BiDi** (`pkg/backend/bidi/`) -- WebSocket transport using WebDriver BiDi protocol. Used with stock Firefox.
+
+The bridge layer never sees backend-specific details. Both backends expose the same Juggler-style method names; the BiDi client translates internally.
+
+## Shared State
+
+The bridge maintains concurrent-safe maps: `ctxMap` (CDP to Juggler context IDs), `latestCtx` (most recent context per session), `isolatedWorlds` (for re-emission after navigation), `nodeObjects` (backendNodeId to objectId), `lastQuery` (pending `$eval` selectors), `loaderMap` (loader IDs), `lastDialog` (dialog IDs), and `pdfStreams` (PDF IO handles).

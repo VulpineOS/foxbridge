@@ -1,0 +1,99 @@
+# OpenClaw Integration
+
+Foxbridge enables [OpenClaw](https://github.com/anthropics/openclaw) to control Camoufox instead of Chrome. Point OpenClaw's `cdpUrl` at foxbridge and all browser tools work transparently.
+
+## Configuration
+
+In your `openclaw.json`, set the `cdpUrl` to foxbridge's endpoint and disable the built-in browser launch:
+
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+With this config, OpenClaw connects to foxbridge as if it were Chrome. Foxbridge translates every CDP call to Juggler and routes it to Camoufox.
+
+## Standalone Mode
+
+Run foxbridge separately and point OpenClaw at it:
+
+```bash
+# Terminal 1: Start foxbridge with Camoufox
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+
+# Terminal 2: Run OpenClaw
+openclaw run --config openclaw.json --message "Navigate to example.com and take a screenshot"
+```
+
+## VulpineOS Embedded Mode
+
+When running inside VulpineOS, foxbridge is launched automatically alongside the Camoufox kernel. The startup sequence:
+
+1. VulpineOS starts Camoufox with Juggler pipe transport
+2. VulpineOS starts foxbridge pointing at the same Camoufox binary
+3. Foxbridge's CDP URL is written into `openclaw.json` as `browser.cdpUrl`
+4. OpenClaw agents connect to `ws://127.0.0.1:9222` automatically
+
+If foxbridge is not found, VulpineOS logs a warning and OpenClaw falls back to its built-in Chrome.
+
+## Per-Agent Browser Contexts
+
+Each OpenClaw agent gets an isolated browser context via `Target.createBrowserContext`. This provides:
+
+- **Separate cookie jar** -- no cookie leakage between agents
+- **Independent localStorage** -- each agent has its own storage
+- **Per-context fingerprint** -- VulpineOS applies unique fingerprints per context
+- **Optional per-context proxy** -- different exit IPs per agent
+
+VulpineOS's context pool pre-warms 10 contexts and recycles them after 50 uses:
+
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true,
+    "contextIsolation": true
+  }
+}
+```
+
+## Browser Tools That Work
+
+All standard OpenClaw browser tools function through foxbridge:
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| Navigate | Working | `page.goto()` with all waitUntil options |
+| Screenshot | Working | Full page, element, clip region |
+| Click | Working | Mouse button, coordinates, modifiers |
+| Type | Working | Keyboard input, special keys |
+| Evaluate | Working | `page.evaluate()`, `$eval`, `$$eval` |
+| PDF | Working | `page.pdf()` with IO streaming |
+| Request interception | Working | Continue, abort, fulfill |
+| Cookie management | Working | Set, get, delete per context |
+| Dialog handling | Working | Alert, confirm, prompt |
+| File upload | Working | `input.uploadFile()` |
+
+## VulpineOS MCP Bridge
+
+VulpineOS also provides an MCP (Model Context Protocol) server as an alternative to direct CDP. The MCP tools use foxbridge internally but offer higher-level operations:
+
+| MCP Tool | Description |
+|----------|-------------|
+| `vulpine_navigate` | Navigate to URL |
+| `vulpine_snapshot` | Token-optimized DOM snapshot (50% fewer tokens) |
+| `vulpine_click` | Click element by selector |
+| `vulpine_type` | Type text into element |
+| `vulpine_screenshot` | Capture screenshot |
+| `vulpine_scroll` | Scroll page |
+| `vulpine_new_context` | Create isolated browser context |
+| `vulpine_close_context` | Destroy browser context |
+| `vulpine_get_ax_tree` | Full accessibility tree |
+
+The `vulpine_snapshot` tool uses VulpineOS Phase 3's optimized DOM export, reducing token usage by over 50% compared to a standard accessibility tree.
