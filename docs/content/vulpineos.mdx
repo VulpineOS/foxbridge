@@ -1,0 +1,67 @@
+# VulpineOS Integration
+
+Foxbridge is a core component of [VulpineOS](https://vulpineos.com) -- the AI agent security runtime. It bridges OpenClaw (and other CDP-speaking agents) to Camoufox, enabling anti-detect browsing without Chrome.
+
+## Architecture
+
+In VulpineOS, foxbridge runs alongside the kernel process. A single Camoufox instance is shared between the VulpineOS kernel (which speaks Juggler directly) and foxbridge (which exposes CDP on a local port).
+
+```
+OpenClaw Agent
+  │ CDP WebSocket
+  ▼
+foxbridge (port 9222)
+  │ Juggler pipe FD 3/4
+  ▼
+Camoufox (single instance)
+  ▲ Juggler pipe FD 3/4
+  │
+VulpineOS Kernel (Go TUI)
+```
+
+## Embedded Mode
+
+VulpineOS launches foxbridge as a subprocess managed by `internal/foxbridge/process.go`. On startup:
+
+1. VulpineOS starts Camoufox with Juggler pipe transport
+2. VulpineOS starts foxbridge pointing at the same Camoufox binary
+3. Foxbridge's CDP URL is written into `openclaw.json` as `browser.cdpUrl`
+4. OpenClaw agents connect to `ws://127.0.0.1:9222` and see a Chrome-like CDP endpoint
+
+```go
+// VulpineOS startup sequence
+fb := foxbridge.New()
+fb.Start(foxbridge.Config{
+    CamoufoxBinary: camoufoxPath,
+    Port:           9222,
+    Headless:       true,
+})
+defer fb.Stop()
+
+// Wait for CDP to be ready
+fb.WaitForPort()
+
+// Configure OpenClaw
+config.BrowserCDPURL = fb.CDPURL() // ws://127.0.0.1:9222
+```
+
+## Context Sharing
+
+Each OpenClaw agent gets its own browser context via `Target.createBrowserContext`. Foxbridge translates this to `Browser.createBrowserContext` in Juggler, which creates an isolated context in Camoufox with:
+
+- Separate cookie jar
+- Independent localStorage
+- Per-context fingerprint (applied by VulpineOS)
+- Optional per-context proxy
+
+The VulpineOS context pool pre-warms 10 contexts and recycles them after 50 uses. All contexts share the single Camoufox process (~10-15MB per context).
+
+## Graceful Fallback
+
+If the foxbridge binary is not found on the system, VulpineOS logs a warning and OpenClaw falls back to its built-in Chrome browser. No configuration changes are needed.
+
+## Links
+
+- [VulpineOS Documentation](https://vulpineos.com)
+- [VulpineOS Repository](https://github.com/PopcornDev1/VulpineOS)
+- [Foxbridge Repository](https://github.com/PopcornDev1/foxbridge)

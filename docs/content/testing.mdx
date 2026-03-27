@@ -1,0 +1,91 @@
+# Testing
+
+## Test Suite Overview
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| Go unit tests | 227 | Bridge translation, session management, CDP server |
+| Juggler integration | 74/74 | End-to-end with Camoufox 146 |
+| BiDi integration | 62/62 | End-to-end with Firefox 148 |
+
+## Running Unit Tests
+
+```bash
+cd /path/to/foxbridge
+go test ./...
+```
+
+Run with race detector:
+
+```bash
+go test -race ./...
+```
+
+Run a specific package:
+
+```bash
+go test ./pkg/bridge/
+go test ./pkg/cdp/
+```
+
+## Test Files
+
+| File | Coverage |
+|------|----------|
+| `pkg/bridge/bridge_test.go` | Bridge routing and message dispatch |
+| `pkg/bridge/page_test.go` | Page navigation, screenshot, PDF, content |
+| `pkg/bridge/runtime_test.go` | evaluate, callFunctionOn, getProperties |
+| `pkg/bridge/dom_test.go` | querySelector, describeNode, getBoxModel |
+| `pkg/bridge/input_test.go` | Mouse, keyboard, touch dispatch |
+| `pkg/bridge/network_test.go` | Cookies, headers, cache |
+| `pkg/bridge/fetch_test.go` | Request interception, fulfill, abort |
+| `pkg/bridge/emulation_test.go` | Viewport, geolocation, timezone |
+| `pkg/bridge/events_test.go` | Event translation and session resolution |
+| `pkg/bridge/target_test.go` | Target creation, auto-attach, contexts |
+| `pkg/bridge/stub_test.go` | Stub domains return success |
+| `pkg/bridge/accessibility_test.go` | AX tree pass-through |
+| `pkg/bridge/console_test.go` | Console event translation |
+| `pkg/bridge/testutil_test.go` | Shared test helpers and mock backend |
+| `pkg/cdp/session_test.go` | Session manager CRUD |
+| `pkg/cdp/server_test.go` | WebSocket server and HTTP endpoints |
+
+## Integration Tests
+
+Integration tests require a running browser. They use Puppeteer to connect to foxbridge and verify end-to-end behavior.
+
+### Juggler (Camoufox)
+
+```bash
+# Start foxbridge
+foxbridge --binary /path/to/camoufox --headless
+
+# Run Puppeteer test suite
+cd tests && npm test
+```
+
+### BiDi (Firefox)
+
+```bash
+# Start foxbridge with BiDi
+foxbridge --backend bidi --binary /path/to/firefox --headless
+
+# Run same test suite
+cd tests && npm test
+```
+
+## What's Tested
+
+- Navigation (goto, reload, back/forward, setContent)
+- Screenshots (full page, element, clip region)
+- PDF generation with IO streaming
+- JavaScript evaluation (evaluate, $eval, $$eval)
+- DOM queries (querySelector, querySelectorAll, getBoxModel)
+- Input dispatch (click, type, keyboard shortcuts)
+- Cookie management (set, get, delete, cross-context isolation)
+- Request interception (continue, abort, fulfill, auth)
+- Emulation (viewport, geolocation, timezone, user agent)
+- Dialog handling (alert, confirm, prompt)
+- Frame management (attach, detach, cross-frame navigation)
+- Multiple browser contexts (isolation, cleanup)
+- Target lifecycle (create, close, auto-attach)
+- Execution context tracking (creation, destruction, navigation)

@@ -1,0 +1,79 @@
+# Event Translation
+
+Foxbridge subscribes to Juggler/BiDi events and translates them into CDP events that Puppeteer expects. This page documents every translation.
+
+## Target Events
+
+| Juggler Event | CDP Event(s) | Notes |
+|--------------|-------------|-------|
+| `Browser.attachedToTarget` | `Target.attachedToTarget` (x2) | Dual-session model: emits TAB then PAGE attachment |
+| `Browser.detachedFromTarget` | `Target.targetDestroyed`, `Target.detachedFromTarget` | Cleans up both tab and page sessions |
+
+### Dual-Session Model
+
+Puppeteer expects two CDP sessions per tab (matching Chrome's architecture):
+
+1. **Tab session** -- represents the browser-level target
+2. **Page session** -- represents the content-level target, routes to Juggler
+
+When `setAutoAttach` is called on a tab session, foxbridge emits the page attachment. Targets that arrive before `setAutoAttach` are queued and emitted retroactively.
+
+## Navigation Events
+
+| Juggler Event | CDP Event(s) |
+|--------------|-------------|
+| `Page.navigationCommitted` | `Page.lifecycleEvent` (init, commit), `Page.frameNavigated` |
+| `Page.eventFired` (load) | `Page.loadEventFired`, `Page.lifecycleEvent` (load), `Page.frameStoppedLoading` |
+| `Page.eventFired` (DOMContentLoaded) | `Page.domContentEventFired`, `Page.lifecycleEvent` (DOMContentLoaded) |
+
+Foxbridge filters intermediate `about:blank` navigations that Juggler emits during redirects -- Chrome does not emit these, and they confuse Puppeteer's loader tracking.
+
+## Execution Context Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| `Runtime.executionContextCreated` | `Runtime.executionContextCreated` |
+| `Runtime.executionContextDestroyed` | `Runtime.executionContextDestroyed` |
+| `Runtime.executionContextsCleared` | `Runtime.executionContextsCleared` |
+
+Context IDs are translated from Juggler's string IDs to CDP's numeric IDs. A bidirectional map (`ctxMap`) tracks the mapping. When a new default context is created, foxbridge re-emits any registered isolated world contexts so Puppeteer's utility world stays functional.
+
+## Frame Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| `Page.frameAttached` | `Page.frameAttached` |
+| `Page.frameDetached` | `Page.frameDetached` |
+
+The main frame's ID (where `parentFrameId` is empty) is stored in the session for use by `Page.navigate` and `Page.getFrameTree`.
+
+## Dialog Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| `Page.dialogOpened` | `Page.javascriptDialogOpening` |
+| `Page.dialogClosed` | `Page.javascriptDialogClosed` |
+
+Dialog IDs are tracked so `Page.handleJavaScriptDialog` can reference the correct dialog.
+
+## Console Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| `Runtime.console` | `Runtime.consoleAPICalled` |
+
+## Network Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| `Network.requestWillBeSent` | `Network.requestWillBeSent` |
+| `Network.responseReceived` | `Network.responseReceived` |
+| `Network.requestFinished` | `Network.loadingFinished` |
+| `Network.requestFailed` | `Network.loadingFailed` |
+| `Browser.requestIntercepted` | `Fetch.requestPaused` + `Network.requestWillBeSent` |
+
+WebSocket URLs (`ws://`, `wss://`) also trigger `Network.webSocketCreated`. Request interception events are delivered to the correct page session by matching the `frameId`.
+
+## BiDi-Specific Differences
+
+When running with the BiDi backend, foxbridge emits `Runtime.executionContextsCleared` on navigation (since BiDi lacks an explicit equivalent). Context destruction also cleans up all derived isolated world mappings pointing to the same realm.

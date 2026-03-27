@@ -1,0 +1,66 @@
+# Quick Start
+
+## Installation
+
+```bash
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+```
+
+## Usage
+
+### With Camoufox (Juggler backend)
+
+```bash
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+### With Firefox (BiDi backend)
+
+```bash
+foxbridge --backend bidi --binary /path/to/firefox --port 9222 --bidi-port 9224 --headless
+```
+
+### Connect with Puppeteer
+
+```javascript
+const puppeteer = require('puppeteer-core');
+
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+  defaultViewport: null,
+});
+
+const page = await browser.newPage();
+await page.goto('https://example.com');
+console.log(await page.title()); // "Example Domain"
+
+await page.screenshot({ path: 'screenshot.png' });
+await browser.disconnect();
+```
+
+### Connect with OpenClaw
+
+In your `openclaw.json`:
+
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+## Embedded Mode (VulpineOS)
+
+When used inside VulpineOS, foxbridge runs as an embedded Go library — no separate process:
+
+```go
+import "github.com/PopcornDev1/foxbridge/pkg/bridge"
+
+// Wrap existing Juggler client
+embedded, _ := foxbridge.StartEmbedded(jugglerClient, 9222)
+defer embedded.Stop()
+// CDP now available at ws://127.0.0.1:9222
+```

@@ -1,0 +1,96 @@
+# BiDi Backend
+
+Foxbridge supports WebDriver BiDi as an alternative backend to Juggler. The BiDi client implements the same `backend.Backend` interface, so the bridge layer works identically regardless of which backend is active.
+
+**Test status:** 62/62 integration tests passing on Firefox 148.
+
+## How It Works
+
+The `bidi.Client` translates every Juggler-style method call into the equivalent BiDi command internally. The bridge layer never sees BiDi protocol -- it always speaks Juggler semantics.
+
+```
+Bridge (Juggler methods)
+  → bidi.Client.Call("Page.navigate", ...)
+    → browsingContext.navigate(...)
+  ← translated response
+```
+
+## Method Mapping
+
+| Juggler Method | BiDi Command |
+|---------------|-------------|
+| `Browser.enable` | `session.new` + `session.subscribe` |
+| `Browser.newPage` | `browsingContext.create` |
+| `Browser.close` | `browser.close` |
+| `Browser.createBrowserContext` | `browser.createUserContext` |
+| `Browser.removeBrowserContext` | `browser.removeUserContext` |
+| `Browser.setCookies` | `storage.setCookie` (per cookie) |
+| `Browser.getCookies` | `storage.getCookies` |
+| `Browser.clearCookies` | `storage.deleteCookies` |
+| `Page.navigate` | `browsingContext.navigate` |
+| `Page.reload` | `browsingContext.reload` |
+| `Page.close` | `browsingContext.close` |
+| `Page.screenshot` | `browsingContext.captureScreenshot` |
+| `Page.printToPDF` | `browsingContext.print` |
+| `Page.dispatchMouseEvent` | `input.performActions` (pointer) |
+| `Page.dispatchKeyEvent` | `input.performActions` (key) |
+| `Page.insertText` | `input.performActions` (key sequence) |
+| `Runtime.evaluate` | `script.evaluate` |
+| `Runtime.callFunction` | `script.callFunction` |
+| `Accessibility.getFullAXTree` | `script.evaluate` (DOM walker) |
+
+## Special Key Mapping
+
+BiDi uses Unicode Private Use Area (PUA) codepoints for special keys, unlike Juggler which uses key names. Foxbridge maps them automatically:
+
+```
+ArrowLeft → \uE012    Enter     → \uE006    F1  → \uE031
+ArrowUp   → \uE013    Escape    → \uE00C    F12 → \uE03C
+ArrowDown → \uE015    Backspace → \uE003    Tab → \uE004
+Home      → \uE011    Delete    → \uE017    Shift → \uE008
+End       → \uE010    PageUp    → \uE00E    Control → \uE009
+```
+
+## Cookie Translation
+
+BiDi wraps cookie values in typed objects. Foxbridge handles the conversion:
+
+```
+// Juggler format
+{name: "sid", value: "abc123", domain: ".example.com"}
+
+// BiDi format (storage.setCookie)
+{name: "sid", value: {type: "string", value: "abc123"}, domain: ".example.com"}
+```
+
+The reverse translation happens when reading cookies via `storage.getCookies`.
+
+## Isolated World Handling
+
+BiDi does not have a direct equivalent to `Page.createIsolatedWorld`. Foxbridge maps isolated world execution contexts to the page's default realm. When the default realm is destroyed on navigation, all derived isolated world context IDs are also cleaned up.
+
+## Event Translation
+
+BiDi events are translated to Juggler event names in the read loop before dispatch:
+
+| BiDi Event | Juggler Event |
+|-----------|--------------|
+| `browsingContext.contextCreated` | `Browser.attachedToTarget` |
+| `browsingContext.contextDestroyed` | `Browser.detachedFromTarget` |
+| `browsingContext.navigationStarted` | `Page.navigationCommitted` |
+| `browsingContext.load` | `Page.eventFired` (load) |
+| `browsingContext.domContentLoaded` | `Page.eventFired` (DOMContentLoaded) |
+| `browsingContext.userPromptOpened` | `Page.dialogOpened` |
+| `browsingContext.userPromptClosed` | `Page.dialogClosed` |
+| `script.realmCreated` | `Runtime.executionContextCreated` |
+| `script.realmDestroyed` | `Runtime.executionContextDestroyed` |
+
+## Usage
+
+```bash
+# Auto-launch Firefox with BiDi
+foxbridge --backend bidi --binary /path/to/firefox --port 9222
+
+# Connect to existing BiDi endpoint
+foxbridge --backend bidi --bidi-url ws://localhost:9224/session/abc123
+```

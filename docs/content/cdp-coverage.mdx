@@ -1,0 +1,169 @@
+# CDP Domain Coverage
+
+Full list of Chrome DevTools Protocol domains and methods implemented by foxbridge.
+
+## Fully Implemented Domains
+
+### Target
+
+| Method | Juggler Mapping |
+|--------|----------------|
+| `setDiscoverTargets` | No-op (Juggler auto-discovers) |
+| `setAutoAttach` | Emits pending `attachedToTarget` events |
+| `createTarget` | `Browser.newPage` |
+| `closeTarget` | `Page.close` |
+| `createBrowserContext` | `Browser.createBrowserContext` |
+| `disposeBrowserContext` | `Browser.removeBrowserContext` |
+| `getTargets` | Session manager enumeration |
+| `attachToTarget` | Emit page attachment pair |
+| `activateTarget` | No-op |
+| `getBrowserContexts` | Session manager enumeration |
+| `getTargetInfo` | Session lookup |
+
+### Page
+
+| Method | Notes |
+|--------|-------|
+| `navigate` | Maps `loaderId` from Juggler `navigationId` |
+| `reload` | Synthetic lifecycle events emitted |
+| `close` | Proactive `targetDestroyed` emission |
+| `captureScreenshot` | Clip/format/quality support |
+| `printToPDF` | Returns IO stream handle for Puppeteer v24+ |
+| `getFrameTree` | Built from session state |
+| `createIsolatedWorld` | Tracked for re-emission on navigation |
+| `setContent` | Via `Runtime.evaluate` with `document.open/write/close` |
+| `getLayoutMetrics` | Via JS `document.documentElement` measurements |
+| `addScriptToEvaluateOnNewDocument` | Pass-through |
+| `removeScriptToEvaluateOnNewDocument` | Pass-through |
+| `handleJavaScriptDialog` | Dialog ID tracking |
+| `setBypassCSP` | No-op |
+| `bringToFront` | No-op |
+| `stopLoading` | No-op |
+| `getNavigationHistory` | Via JS `history.length` |
+| `setExtraHTTPHeaders` | `Browser.setExtraHTTPHeaders` |
+| `setDownloadBehavior` | No-op |
+| `getResourceTree` | Minimal frame tree |
+| `setLifecycleEventsEnabled` | No-op (always enabled) |
+
+### Runtime
+
+| Method | Notes |
+|--------|-------|
+| `evaluate` | `awaitPromise` via async IIFE wrapping |
+| `callFunctionOn` | `objectId` pass-through, `$eval` combine |
+| `getProperties` | `Runtime.getObjectProperties` |
+| `releaseObject` | `Runtime.disposeObject` |
+| `releaseObjectGroup` | No-op |
+| `addBinding` | No-op |
+| `discardConsoleEntries` | No-op |
+| `runIfWaitingForDebugger` | No-op |
+
+### DOM
+
+| Method | Notes |
+|--------|-------|
+| `getDocument` | Via `document.documentElement` evaluation |
+| `querySelector` | Returns nodeId with backendNodeId |
+| `querySelectorAll` | Returns array of nodeIds |
+| `describeNode` | Full node description with attributes |
+| `resolveNode` | Resolve backendNodeId to remote object |
+| `getBoxModel` | Element bounding rect |
+| `getContentQuads` | Element quad coordinates |
+| `getOuterHTML` | Element outer HTML |
+| `getAttributes` | Element attributes array |
+| `scrollIntoViewIfNeeded` | `element.scrollIntoView()` |
+| `focus` | `element.focus()` |
+| `setFileInputFiles` | File input injection |
+| `removeNode` | `element.remove()` |
+| `setAttributeValue` | `element.setAttribute()` |
+
+### Input
+
+| Method | Juggler Method |
+|--------|---------------|
+| `dispatchMouseEvent` | `Page.dispatchMouseEvent` |
+| `dispatchKeyEvent` | `Page.dispatchKeyEvent` |
+| `insertText` | `Page.insertText` |
+| `dispatchTouchEvent` | `Page.dispatchTouchEvent` |
+
+### Network
+
+| Method | Juggler Method |
+|--------|---------------|
+| `setCookies` | `Browser.setCookies` |
+| `getCookies` | `Browser.getCookies` |
+| `deleteCookies` | `Browser.clearCookies` (filtered) |
+| `clearBrowserCookies` | `Browser.clearCookies` |
+| `setExtraHTTPHeaders` | `Browser.setExtraHTTPHeaders` |
+| `setRequestInterception` | `Browser.setRequestInterception` |
+| `setUserAgentOverride` | `Browser.setUserAgentOverride` |
+| `setCacheDisabled` | No-op |
+| `emulateNetworkConditions` | No-op |
+| `getResponseBody` | Pass-through |
+
+### Fetch
+
+| Method | Juggler Method |
+|--------|---------------|
+| `enable` | `Browser.setRequestInterception` |
+| `disable` | `Browser.setRequestInterception(false)` |
+| `continueRequest` | `Browser.continueInterceptedRequest` |
+| `fulfillRequest` | `Browser.fulfillInterceptedRequest` |
+| `failRequest` | `Browser.abortInterceptedRequest` |
+| `getResponseBody` | `Browser.getResponseBody` |
+| `continueWithAuth` | `Browser.handleAuthRequest` |
+| `continueResponse` | `Browser.continueInterceptedRequest` |
+
+### Emulation
+
+| Method | Notes |
+|--------|-------|
+| `setGeolocationOverride` | `Browser.setGeolocationOverride` |
+| `setUserAgentOverride` | `Browser.setUserAgentOverride` |
+| `setTimezoneOverride` | `Browser.setTimezoneOverride` |
+| `setLocaleOverride` | `Browser.setLocaleOverride` |
+| `setDeviceMetricsOverride` | `Browser.setViewportSize` |
+| `setTouchEmulationEnabled` | `Browser.setTouchOverride` |
+| `setEmulatedMedia` | `Page.setEmulatedMedia` |
+| `setScrollbarsHidden` | No-op |
+| `setDefaultBackgroundColorOverride` | No-op |
+| `setScriptExecutionDisabled` | No-op |
+
+### Other Implemented
+
+| Domain | Methods |
+|--------|---------|
+| Accessibility | `getFullAXTree` |
+| Performance | `getMetrics` (via JS `performance.timing`) |
+| IO | `read`, `close` (PDF streaming) |
+| Console | `enable`, `disable` |
+| Browser | `getVersion`, `close`, `getWindowForTarget`, `setWindowBounds` |
+
+## Stub Domains (No-Op Success)
+
+These domains return `{}` for all methods. Puppeteer and other clients call them but don't require real functionality:
+
+| Domain | Purpose |
+|--------|---------|
+| Debugger | JS debugging |
+| Profiler | CPU profiling |
+| HeapProfiler | Heap snapshots |
+| Memory | Memory info |
+| ServiceWorker | SW management |
+| CacheStorage | Cache API |
+| IndexedDB | IDB inspection |
+| Log | Log entries |
+| Security | Certificate info |
+| CSS | Stylesheet inspection |
+| Overlay | Highlight overlays |
+| DOMStorage | localStorage inspection |
+| WebAuthn | WebAuthn testing |
+| Media | Media playback |
+| Audits | Best practices |
+| Inspector | DevTools internal |
+| Database | Web SQL |
+| BackgroundService | Background fetch/sync |
+| Cast | Cast devices |
+| DeviceAccess | Device permissions |
+
+Any `.enable` or `.disable` call on an unrecognized domain also returns success.

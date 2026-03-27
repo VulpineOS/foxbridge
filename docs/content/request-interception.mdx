@@ -1,0 +1,71 @@
+# Request Interception
+
+Foxbridge implements the CDP `Fetch` domain for request interception, translating to Juggler's `Browser.setRequestInterception` API.
+
+## Enabling Interception
+
+```javascript
+// Via Puppeteer
+await page.setRequestInterception(true);
+
+page.on('request', request => {
+  if (request.url().includes('ads'))
+    request.abort();
+  else
+    request.continue();
+});
+```
+
+Under the hood, Puppeteer calls `Fetch.enable` which foxbridge translates to:
+
+```
+Fetch.enable → Browser.setRequestInterception({enabled: true})
+```
+
+The `browserContextId` is automatically resolved from the CDP session.
+
+## Supported Methods
+
+| CDP Method | Juggler Method | Description |
+|-----------|---------------|-------------|
+| `Fetch.enable` | `Browser.setRequestInterception` | Start intercepting requests |
+| `Fetch.disable` | `Browser.setRequestInterception(false)` | Stop intercepting |
+| `Fetch.continueRequest` | `Browser.continueInterceptedRequest` | Continue with optional URL/header modifications |
+| `Fetch.fulfillRequest` | `Browser.fulfillInterceptedRequest` | Respond with custom status/headers/body |
+| `Fetch.failRequest` | `Browser.abortInterceptedRequest` | Fail with an error reason |
+| `Fetch.continueWithAuth` | `Browser.handleAuthRequest` | Handle HTTP auth challenges |
+| `Fetch.getResponseBody` | `Browser.getResponseBody` | Read intercepted response body |
+| `Fetch.continueResponse` | `Browser.continueInterceptedRequest` | Continue with modified response headers |
+
+## Error Reason Mapping
+
+`Fetch.failRequest` accepts a CDP `Network.ErrorReason` which is mapped to Juggler error codes:
+
+| CDP ErrorReason | Juggler Code |
+|----------------|-------------|
+| `Failed` | `failed` |
+| `Aborted` | `aborted` |
+| `TimedOut` | `timedout` |
+| `AccessDenied` | `accessdenied` |
+| `ConnectionRefused` | `connectionrefused` |
+| `NameNotResolved` | `namenotresolved` |
+| `InternetDisconnected` | `internetdisconnected` |
+| `BlockedByClient` | `blockedbyclient` |
+| `BlockedByResponse` | `blockedbyresponse` |
+
+## Event Flow
+
+When a request is intercepted, Juggler emits `Browser.requestIntercepted`. Foxbridge translates this into two CDP events in order:
+
+1. `Network.requestWillBeSent` -- so Puppeteer has the request metadata
+2. `Fetch.requestPaused` -- so Puppeteer knows to call continue/abort/fulfill
+
+The `requestId` is shared between both events. Foxbridge resolves the correct CDP session from the request's `frameId`.
+
+## Response Body
+
+`Fetch.getResponseBody` returns the body from Juggler's base64-encoded format. If the content is valid UTF-8 text, it is decoded and returned as plain text (`base64Encoded: false`). Binary content is returned as-is with `base64Encoded: true`.
+
+## BiDi Backend
+
+On the BiDi backend, request interception uses `network.addIntercept` with the `beforeRequestSent` phase. Intercept IDs are tracked for cleanup when interception is disabled.

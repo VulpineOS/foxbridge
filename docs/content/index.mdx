@@ -1,0 +1,63 @@
+# Foxbridge
+
+**CDP-to-Firefox Protocol Proxy** — Run Puppeteer, OpenClaw, and any Chrome DevTools Protocol client against Firefox-based browsers.
+
+Foxbridge translates Chrome DevTools Protocol (CDP) into Firefox's **Juggler** and **WebDriver BiDi** protocols. Any tool built for Chrome can control Camoufox or standard Firefox without modification.
+
+**Repository:** [PopcornDev1/foxbridge](https://github.com/PopcornDev1/foxbridge)
+
+## Why Foxbridge?
+
+AI agent tools speak CDP natively. Firefox uses completely different protocols. Without foxbridge, agents can't use Camoufox's anti-detect fingerprinting — they're stuck with Chrome, which is trivially detectable.
+
+Foxbridge eliminates this gap: it presents a CDP WebSocket that looks exactly like Chrome to the client, but every command is translated and routed through Firefox.
+
+## Test Results
+
+| Backend | Tests | Status |
+|---------|-------|--------|
+| Juggler (Camoufox 146) | 74/74 | ✅ 100% |
+| BiDi (Firefox 148) | 62/62 | ✅ 100% |
+| Go unit tests | 227 | ✅ All passing |
+
+## Architecture
+
+```
+CDP Client (Puppeteer, OpenClaw, etc.)
+  │
+  ▼ WebSocket (ws://localhost:9222)
+┌────────────────────────────────────┐
+│ foxbridge                          │
+│  ├── CDP Server (port 9222)        │
+│  ├── Bridge (CDP → Juggler/BiDi)   │
+│  └── Backend (Juggler or BiDi)     │
+└────────────────────────────────────┘
+  │
+  ▼ Pipe FD 3/4 (Juggler) or WebSocket (BiDi)
+┌────────────────────────────────────┐
+│ Firefox / Camoufox                 │
+└────────────────────────────────────┘
+```
+
+## CDP Domains Implemented
+
+| Domain | Methods | Notes |
+|--------|---------|-------|
+| Target | createTarget, closeTarget, setAutoAttach, getBrowserContexts | Full session management |
+| Page | navigate, reload, setContent, screenshot, printToPDF, createIsolatedWorld | Complete |
+| Runtime | evaluate, callFunctionOn, getProperties, releaseObject | Full with $eval combine |
+| Input | dispatchMouseEvent, dispatchKeyEvent, dispatchTouchEvent, insertText | All event types |
+| Network | setCookies, getCookies, deleteCookies, setUserAgentOverride, setRequestInterception | Full |
+| Emulation | setDeviceMetricsOverride, setUserAgentOverride, setGeolocationOverride, setTimezoneOverride | Complete |
+| DOM | getDocument, querySelector, describeNode, resolveNode, getBoxModel, scrollIntoView | Core methods |
+| Fetch | enable, continueRequest, fulfillRequest, failRequest, getResponseBody, continueResponse | Request interception |
+| Performance | getMetrics | Real timing data |
+| Accessibility | getFullAXTree | Pass-through |
+| IO | read, close | PDF streaming |
+
+## Part of VulpineOS
+
+Foxbridge is a core component of [VulpineOS](https://vulpineos.com) — the AI agent security runtime. In VulpineOS, foxbridge runs as an **embedded CDP server** sharing a single Camoufox instance with the kernel, enabling OpenClaw agents to browse with per-agent fingerprints and context isolation.
+
+- [VulpineOS Documentation](https://vulpineos.com)
+- [VulpineOS Repository](https://github.com/PopcornDev1/VulpineOS)

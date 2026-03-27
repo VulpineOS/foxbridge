@@ -1,0 +1,64 @@
+# PDF Generation
+
+Foxbridge implements `Page.printToPDF` with IO stream support for Puppeteer v24+.
+
+## Usage
+
+```javascript
+const pdf = await page.pdf({
+  format: 'A4',
+  printBackground: true,
+  landscape: false,
+  margin: { top: '1cm', bottom: '1cm' },
+});
+fs.writeFileSync('page.pdf', pdf);
+```
+
+## Supported Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `landscape` | boolean | `false` | Landscape orientation |
+| `displayHeaderFooter` | boolean | `false` | Show header/footer |
+| `printBackground` | boolean | `false` | Include background graphics |
+| `scale` | number | `1.0` | Page scale factor |
+| `paperWidth` | number | `8.5` | Paper width in inches |
+| `paperHeight` | number | `11` | Paper height in inches |
+| `marginTop` | number | `0` | Top margin in inches |
+| `marginBottom` | number | `0` | Bottom margin in inches |
+| `marginLeft` | number | `0` | Left margin in inches |
+| `marginRight` | number | `0` | Right margin in inches |
+| `headerTemplate` | string | `""` | HTML for header |
+| `footerTemplate` | string | `""` | HTML for footer |
+| `preferCSSPageSize` | boolean | `false` | Use CSS `@page` size |
+| `pageRanges` | string | `""` | Page ranges (e.g., `"1-3"`) |
+
+All parameters are forwarded directly to Juggler's `Page.printToPDF`.
+
+## IO Stream Protocol
+
+Puppeteer v24+ uses the IO domain to read PDF data via streaming instead of reading the base64 `data` field directly. Foxbridge supports both approaches:
+
+1. `Page.printToPDF` returns `{data: "...", stream: "pdf-stream-123"}`
+2. Puppeteer calls `IO.read({handle: "pdf-stream-123"})`
+3. Foxbridge returns the PDF data with `eof: true`
+4. Puppeteer calls `IO.close({handle: "pdf-stream-123"})`
+
+Stream handles are stored in memory and cleaned up on `IO.close`.
+
+```
+Page.printToPDF
+  → Juggler Page.printToPDF
+  ← {data: base64} stored as stream
+  → returns {data, stream: handle}
+
+IO.read({handle})
+  ← {base64Encoded: true, data: ..., eof: true}
+
+IO.close({handle})
+  ← {} (stream deleted)
+```
+
+## BiDi Backend
+
+On the BiDi backend, `Page.printToPDF` maps to `browsingContext.print`, which returns the PDF as a base64 string. The same IO streaming mechanism is used.

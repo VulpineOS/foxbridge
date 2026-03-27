@@ -1,0 +1,103 @@
+# Puppeteer Usage
+
+Foxbridge provides full Puppeteer compatibility. Connect `puppeteer-core` to foxbridge's CDP endpoint and use the standard Puppeteer API.
+
+## Connect to Foxbridge
+
+```javascript
+const puppeteer = require('puppeteer-core');
+
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+  defaultViewport: null,
+});
+```
+
+## Basic Navigation
+
+```javascript
+const page = await browser.newPage();
+await page.goto('https://example.com', { waitUntil: 'load' });
+console.log(await page.title());
+await page.screenshot({ path: 'screenshot.png' });
+```
+
+## Request Interception
+
+```javascript
+await page.setRequestInterception(true);
+page.on('request', req => {
+  if (req.resourceType() === 'image') req.abort();
+  else req.continue();
+});
+await page.goto('https://example.com');
+```
+
+## PDF Generation
+
+```javascript
+await page.goto('https://example.com');
+const pdf = await page.pdf({ format: 'A4', printBackground: true });
+require('fs').writeFileSync('output.pdf', pdf);
+```
+
+## Evaluate JavaScript
+
+```javascript
+const title = await page.evaluate(() => document.title);
+const text = await page.$eval('h1', el => el.textContent);
+const links = await page.$$eval('a', els => els.map(a => a.href));
+```
+
+## Dialog Handling
+
+```javascript
+page.on('dialog', async dialog => {
+  console.log(dialog.message());
+  await dialog.accept('answer');
+});
+await page.evaluate(() => prompt('Question?'));
+```
+
+## Multiple Contexts
+
+```javascript
+const context = await browser.createBrowserContext();
+const page = await context.newPage();
+await page.goto('https://example.com');
+// Isolated cookies, storage, and cache
+await context.close();
+```
+
+## Keyboard and Mouse
+
+```javascript
+await page.click('#button');
+await page.type('#input', 'Hello world');
+await page.keyboard.press('Enter');
+await page.mouse.move(100, 200);
+await page.mouse.click(100, 200);
+```
+
+## File Upload
+
+```javascript
+const input = await page.$('input[type="file"]');
+await input.uploadFile('/path/to/file.pdf');
+```
+
+## Performance Metrics
+
+```javascript
+const client = await page.createCDPSession();
+await client.send('Performance.enable');
+const { metrics } = await client.send('Performance.getMetrics');
+```
+
+## Puppeteer Compatibility Notes
+
+- Foxbridge implements the **dual-session model** (tab + page per target) that Puppeteer expects from Chrome.
+- `Browser.getWindowForTarget` returns a fixed window ID. Window resize via `Browser.setWindowBounds` is a no-op.
+- `waitUntil: 'networkidle0'` and `waitUntil: 'networkidle2'` work via lifecycle event translation.
+- `page.setContent()` uses `document.open/write/close` internally.
+- Tested with Puppeteer v24.

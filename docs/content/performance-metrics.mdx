@@ -1,0 +1,47 @@
+# Performance Metrics
+
+Foxbridge implements `Performance.getMetrics` by evaluating `performance.timing` in the page context, returning real browser timing data.
+
+## Usage
+
+```javascript
+const client = await page.createCDPSession();
+await client.send('Performance.enable');
+const { metrics } = await client.send('Performance.getMetrics');
+
+for (const { name, value } of metrics) {
+  console.log(`${name}: ${value}`);
+}
+```
+
+## Returned Metrics
+
+| Metric | Source | Description |
+|--------|--------|-------------|
+| `Timestamp` | `Date.now() / 1000` | Current time in seconds |
+| `Documents` | `document.querySelectorAll('*').length` | Total DOM element count |
+| `Frames` | `window.frames.length` | Number of frames |
+| `JSEventListeners` | Constant `0` | Not available in Firefox |
+| `DomContentLoaded` | `performance.timing` | Time to DOMContentLoaded (seconds) |
+| `NavigationStart` | `performance.timing` | Navigation start timestamp |
+| `DomInteractive` | `performance.timing` | Time to DOM interactive (seconds) |
+| `FirstMeaningfulPaint` | `performance.timing.responseEnd` | Approximated from response end |
+| `TaskDuration` | `performance.now() / 1000` | Page uptime in seconds |
+| `JSHeapUsedSize` | `performance.memory` | Used JS heap (if available) |
+| `JSHeapTotalSize` | `performance.memory` | Total JS heap (if available) |
+
+Timing-based metrics (DomContentLoaded, NavigationStart, DomInteractive, FirstMeaningfulPaint) are only included when the corresponding `performance.timing` values are non-zero.
+
+## Implementation
+
+The metrics are collected via a single `Runtime.evaluate` call injected into the page. This avoids any protocol-level dependency on Chrome-specific performance APIs.
+
+If evaluation fails (e.g., the page has no content), a fallback response with just `Timestamp: 0` is returned.
+
+## Protocol Methods
+
+| Method | Behavior |
+|--------|----------|
+| `Performance.enable` | No-op (always available) |
+| `Performance.disable` | No-op |
+| `Performance.getMetrics` | Evaluates JS and returns metrics array |
