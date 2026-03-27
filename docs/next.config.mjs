@@ -1,10 +1,7 @@
 import nextra from 'nextra'
 
-const withNextra = nextra({
-  contentDirBasePath: '/docs'
-})
+const withNextra = nextra({})
 
 export default withNextra({
-  output: 'export',
   images: { unoptimized: true },
 })
