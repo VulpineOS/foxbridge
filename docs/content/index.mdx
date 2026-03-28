@@ -1,10 +1,12 @@
 # Foxbridge
 
-<img src="/FoxbridgeBanner.jpg" alt="Foxbridge" style={{ width: '100%', borderRadius: '8px', marginBottom: '24px' }} />
+<div style={{ marginTop: '16px', marginBottom: '32px' }}>
+  <img src="/FoxbridgeBanner.jpg" alt="Foxbridge" style={{ width: '100%', borderRadius: '8px' }} />
+</div>
 
-**CDP-to-Firefox Protocol Proxy** — Run Puppeteer, OpenClaw, and any Chrome DevTools Protocol client against Firefox-based browsers.
+**CDP & WebDriver BiDi - to - Firefox Protocol Proxy**
 
-Foxbridge translates Chrome DevTools Protocol (CDP) into Firefox's **Juggler** and **WebDriver BiDi** protocols. Any tool built for Chrome can control Camoufox or standard Firefox without modification.
+Run Puppeteer, OpenClaw, and any Chrome DevTools Protocol client against Firefox-based browsers. Foxbridge translates CDP and WebDriver BiDi into Firefox's native Juggler protocol — any tool built for Chrome can control Camoufox or standard Firefox without modification.
 
 **Repository:** [PopcornDev1/foxbridge](https://github.com/PopcornDev1/foxbridge)
 
@@ -13,14 +15,6 @@ Foxbridge translates Chrome DevTools Protocol (CDP) into Firefox's **Juggler** a
 AI agent tools speak CDP natively. Firefox uses completely different protocols. Without foxbridge, agents can't use Camoufox's anti-detect fingerprinting — they're stuck with Chrome, which is trivially detectable.
 
 Foxbridge eliminates this gap: it presents a CDP WebSocket that looks exactly like Chrome to the client, but every command is translated and routed through Firefox.
-
-## Test Results
-
-| Backend | Tests | Status |
-|---------|-------|--------|
-| Juggler (Camoufox 146) | 74/74 | ✅ 100% |
-| BiDi (Firefox 148) | 62/62 | ✅ 100% |
-| Go unit tests | 227 | ✅ All passing |
 
 ## Architecture
 
@@ -59,7 +53,7 @@ CDP Client (Puppeteer, OpenClaw, etc.)
 
 ## Part of VulpineOS
 
-Foxbridge is a core component of [VulpineOS](https://vulpineos.com) — the AI agent security runtime. In VulpineOS, foxbridge runs as an **embedded CDP server** sharing a single Camoufox instance with the kernel, enabling OpenClaw agents to browse with per-agent fingerprints and context isolation.
+Foxbridge is a core component of [VulpineOS](https://vulpineos.com) — operate stealth and secure OpenClaw agents at scale. In VulpineOS, foxbridge runs as an **embedded CDP server** sharing a single Camoufox instance with the kernel, enabling agents to browse with per-agent fingerprints and context isolation.
 
 - [VulpineOS Documentation](https://vulpineos.com)
 - [VulpineOS Repository](https://github.com/PopcornDev1/VulpineOS)

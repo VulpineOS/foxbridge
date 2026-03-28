@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">foxbridge</h1>
-  <h4 align="center">CDP-to-Firefox protocol proxy — use Puppeteer, OpenClaw, or any CDP tool with Firefox</h4>
+  <h4 align="center">CDP & WebDriver BiDi - to - Firefox Protocol Proxy</h4>
 </p>
 
 <p align="center">
