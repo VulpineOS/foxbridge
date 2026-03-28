@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/public/FoxbridgeBanner.jpg" alt="Foxbridge" width="600">
+</p>
+
+<p align="center">
   <h1 align="center">foxbridge</h1>
   <h4 align="center">CDP & WebDriver BiDi - to - Firefox Protocol Proxy</h4>
 </p>
@@ -71,7 +75,9 @@ foxbridge --backend bidi --bidi-url ws://localhost:9223/session
 | **Accessibility** | getFullAXTree | Full |
 | **Console** | enable, disable | Full |
 | **Browser** | getVersion, close, getWindowForTarget, setWindowBounds | Full |
-| **Stubs** | Debugger, Profiler, Performance, Memory, ServiceWorker, CSS, Overlay, DOMStorage, WebAuthn, Media, Audits, Inspector, + 20 more | No-op |
+| **Performance** | getMetrics (real timing data from page) | Full |
+| **IO** | read, close (PDF streaming for Puppeteer v24+) | Full |
+| **Stubs** | Debugger, Profiler, HeapProfiler, Memory, ServiceWorker, CSS, Overlay, DOMStorage, WebAuthn, Media, Audits, Inspector, + 8 more (20 total) | No-op |
 
 ## Event Translation
 
