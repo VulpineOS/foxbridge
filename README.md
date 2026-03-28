@@ -4,7 +4,7 @@
 
 <p align="center">
   <h1 align="center">foxbridge</h1>
-  <h4 align="center">CDP & WebDriver BiDi - to - Firefox Protocol Proxy</h4>
+  <h4 align="center">CDP-to-Firefox Protocol Proxy — via Juggler and WebDriver BiDi</h4>
 </p>
 
 <p align="center">

@@ -5,7 +5,7 @@ import 'nextra-theme-docs/style.css'
 
 export const metadata = {
   title: 'Foxbridge',
-  description: 'CDP & WebDriver BiDi - to - Firefox Protocol Proxy',
+  description: 'CDP-to-Firefox Protocol Proxy — via Juggler and WebDriver BiDi',
 }
 
 const logo = (
