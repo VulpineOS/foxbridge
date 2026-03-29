@@ -4,12 +4,42 @@ import { getPageMap } from 'nextra/page-map'
 import 'nextra-theme-docs/style.css'
 
 export const metadata = {
-  title: 'Foxbridge',
-  description: 'CDP-to-Firefox Protocol Proxy — via Juggler and WebDriver BiDi',
+  title: {
+    default: 'Foxbridge — CDP-to-Firefox Protocol Proxy',
+    template: '%s | Foxbridge',
+  },
+  description: 'Foxbridge translates Chrome DevTools Protocol (CDP) to Firefox via Juggler and WebDriver BiDi. Use Puppeteer, OpenClaw, and any CDP tool with Firefox and Camoufox.',
   icons: {
     icon: '/FoxbridgeLogo.png',
     apple: '/FoxbridgeLogo.png',
   },
+  metadataBase: new URL('https://foxbridge.vulpineos.com'),
+  openGraph: {
+    title: 'Foxbridge — CDP-to-Firefox Protocol Proxy',
+    description: 'Translate Chrome DevTools Protocol to Firefox. Use Puppeteer and OpenClaw with Camoufox for undetectable browser automation.',
+    url: 'https://foxbridge.vulpineos.com',
+    siteName: 'Foxbridge',
+    images: [
+      {
+        url: '/FoxbridgeBanner.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Foxbridge — CDP-to-Firefox Protocol Proxy',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Foxbridge — CDP-to-Firefox Protocol Proxy',
+    description: 'Translate Chrome DevTools Protocol to Firefox. Use Puppeteer and OpenClaw with Camoufox.',
+    images: ['/FoxbridgeBanner.jpg'],
+  },
+  alternates: {
+    canonical: 'https://foxbridge.vulpineos.com',
+  },
+  keywords: ['CDP', 'Firefox', 'Puppeteer', 'OpenClaw', 'Camoufox', 'Chrome DevTools Protocol', 'WebDriver BiDi', 'Juggler', 'browser automation', 'anti-detect browser', 'foxbridge', 'CDP proxy', 'Firefox CDP', 'VulpineOS'],
 }
 
 const logo = (
@@ -32,6 +62,48 @@ export default async function RootLayout({ children }) {
       <Head>
         <meta name="theme-color" content="#F97316" />
         <link rel="icon" href="/FoxbridgeLogo.png" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'SoftwareApplication',
+              name: 'Foxbridge',
+              description: 'CDP-to-Firefox Protocol Proxy — translates Chrome DevTools Protocol to Firefox via Juggler and WebDriver BiDi',
+              url: 'https://foxbridge.vulpineos.com',
+              applicationCategory: 'DeveloperApplication',
+              operatingSystem: 'macOS, Linux',
+              programmingLanguage: 'Go',
+              codeRepository: 'https://github.com/PopcornDev1/foxbridge',
+              license: 'https://opensource.org/licenses/MIT',
+              author: {
+                '@type': 'Person',
+                name: 'Elliot',
+              },
+              offers: {
+                '@type': 'Offer',
+                price: '0',
+                priceCurrency: 'USD',
+              },
+            }),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: 'Foxbridge Documentation',
+              url: 'https://foxbridge.vulpineos.com',
+              description: 'Documentation for Foxbridge CDP-to-Firefox protocol proxy',
+              publisher: {
+                '@type': 'Person',
+                name: 'Elliot',
+              },
+            }),
+          }}
+        />
       </Head>
       <body>
         <Layout
