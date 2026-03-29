@@ -1,4 +1,9 @@
-# PDF Generation
+---
+title: "PDF Generation — Generate PDFs from Firefox Pages via CDP"
+description: "Generate PDFs from Firefox using Page.printToPDF with IO streaming support for Puppeteer v24+."
+---
+
+# PDF Generation from Firefox via CDP
 
 Foxbridge implements `Page.printToPDF` with IO stream support for Puppeteer v24+.
 
@@ -62,3 +67,11 @@ IO.close({handle})
 ## BiDi Backend
 
 On the BiDi backend, `Page.printToPDF` maps to `browsingContext.print`, which returns the PDF as a base64 string. The same IO streaming mechanism is used.
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [How-To Guides](/how-to) — Common foxbridge tasks and recipes
+- [Performance Metrics](/performance-metrics) — Page timing data from Firefox

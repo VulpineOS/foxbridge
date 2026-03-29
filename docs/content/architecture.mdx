@@ -1,4 +1,9 @@
-# Architecture
+---
+title: "Foxbridge Architecture — How CDP-to-Firefox Translation Works"
+description: "Foxbridge architecture: CDP server, bridge layer, dual backends. How CDP commands are translated to Juggler and WebDriver BiDi."
+---
+
+# Foxbridge Architecture
 
 Foxbridge is a protocol proxy with four layers: a CDP WebSocket server, a bridge router, domain handlers, and a backend abstraction. Every CDP message flows through all four before reaching Firefox.
 
@@ -91,3 +96,12 @@ The bridge layer never sees backend-specific details. Both backends expose the s
 ## Shared State
 
 The bridge maintains concurrent-safe maps: `ctxMap` (CDP to Juggler context IDs), `latestCtx` (most recent context per session), `isolatedWorlds` (for re-emission after navigation), `nodeObjects` (backendNodeId to objectId), `lastQuery` (pending `$eval` selectors), `loaderMap` (loader IDs), `lastDialog` (dialog IDs), and `pdfStreams` (PDF IO handles).
+
+---
+
+## See also
+
+- [Session Model](/session-model) — CDP session management and dual-session model
+- [Event Translation](/event-translation) — Juggler to CDP event mapping
+- [Juggler Backend](/juggler-backend) — Pipe transport for Camoufox
+- [BiDi Backend](/bidi-backend) — WebDriver BiDi support for Firefox

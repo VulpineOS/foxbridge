@@ -1,4 +1,9 @@
-# BiDi Backend
+---
+title: "BiDi Backend — WebDriver BiDi Support for Firefox CDP"
+description: "Foxbridge WebDriver BiDi backend: W3C standard WebSocket transport. Use CDP tools with vanilla Firefox 129+ via BiDi translation."
+---
+
+# WebDriver BiDi Backend — Firefox CDP via W3C Standard
 
 Foxbridge supports WebDriver BiDi as an alternative backend to Juggler. The BiDi client implements the same `backend.Backend` interface, so the bridge layer works identically regardless of which backend is active.
 
@@ -94,3 +99,11 @@ foxbridge --backend bidi --binary /path/to/firefox --port 9222
 # Connect to existing BiDi endpoint
 foxbridge --backend bidi --bidi-url ws://localhost:9224/session/abc123
 ```
+
+---
+
+## See also
+
+- [Juggler Backend](/juggler-backend) — Pipe transport for Camoufox
+- [Architecture](/architecture) — How CDP-to-Firefox translation works under the hood
+- [CLI Reference](/cli-reference) — All foxbridge command line options

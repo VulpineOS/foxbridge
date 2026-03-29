@@ -1,4 +1,9 @@
-# Input Handling
+---
+title: "Input Handling — Mouse, Keyboard, and Touch Events in Firefox CDP"
+description: "Dispatch mouse clicks, keyboard events, and touch gestures to Firefox pages using CDP Input domain via foxbridge."
+---
+
+# Input Handling — Mouse, Keyboard, and Touch Events
 
 Foxbridge translates CDP input events to Juggler's `Page.dispatchMouseEvent`, `Page.dispatchKeyEvent`, `Page.dispatchTouchEvent`, and `Page.insertText` methods. Each event type requires specific field mapping.
 
@@ -92,3 +97,10 @@ Optional fields (`radiusX`, `radiusY`, `force`) are only included when greater t
 ## Puppeteer Click Sequence
 
 A `page.click(selector)` generates three events: `mouseMoved` (translated to `mousemove`), `mousePressed` (translated to `mousedown` with `buttons: 1`), and `mouseReleased` (translated to `mouseup` with `buttons: 0`).
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [Device Emulation](/emulation) — Viewport, geolocation, and user agent overrides

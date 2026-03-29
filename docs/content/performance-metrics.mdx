@@ -1,4 +1,9 @@
-# Performance Metrics
+---
+title: "Performance Metrics — Page Timing Data from Firefox via CDP"
+description: "Get real page performance timing data from Firefox using CDP Performance.getMetrics through foxbridge."
+---
+
+# Performance Metrics — Page Timing via CDP
 
 Foxbridge implements `Performance.getMetrics` by evaluating `performance.timing` in the page context, returning real browser timing data.
 
@@ -45,3 +50,10 @@ If evaluation fails (e.g., the page has no content), a fallback response with ju
 | `Performance.enable` | No-op (always available) |
 | `Performance.disable` | No-op |
 | `Performance.getMetrics` | Evaluates JS and returns metrics array |
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [PDF Generation](/pdf-generation) — Generate PDFs from Firefox pages via CDP

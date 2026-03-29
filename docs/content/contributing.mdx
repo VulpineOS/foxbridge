@@ -1,4 +1,9 @@
-# Contributing
+---
+title: "Contributing to Foxbridge — Development Guide"
+description: "How to contribute to foxbridge: repo structure, building from source, running tests, submitting PRs."
+---
+
+# Contributing to Foxbridge
 
 ## Repository Structure
 
@@ -91,3 +96,11 @@ cd tests && npm test       # Integration tests (requires browser)
 - Return `json.RawMessage("{}"), nil` for no-op and success-with-no-data methods
 - Return `nil, &cdp.Error{Code: -32000, Message: err.Error()}` for errors
 - All shared state maps must be mutex-protected
+
+---
+
+## See also
+
+- [Architecture](/architecture) — How CDP-to-Firefox translation works under the hood
+- [Testing](/testing) — Test suite and Puppeteer compatibility
+- [CLI Reference](/cli-reference) — All foxbridge command line options

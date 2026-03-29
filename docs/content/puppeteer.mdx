@@ -1,3 +1,8 @@
+---
+title: "Puppeteer Firefox — Use Puppeteer with Firefox via Foxbridge CDP"
+description: "Connect Puppeteer to Firefox and Camoufox using foxbridge. 74/74 Juggler tests and 62/62 BiDi tests passing."
+---
+
 # Puppeteer Usage
 
 Foxbridge provides full Puppeteer compatibility. Connect `puppeteer-core` to foxbridge's CDP endpoint and use the standard Puppeteer API.
@@ -101,3 +106,12 @@ const { metrics } = await client.send('Performance.getMetrics');
 - `waitUntil: 'networkidle0'` and `waitUntil: 'networkidle2'` work via lifecycle event translation.
 - `page.setContent()` uses `document.open/write/close` internally.
 - Tested with Puppeteer v24.
+
+---
+
+## See also
+
+- [Quick Start](/quick-start) — Install and run foxbridge in 2 minutes
+- [OpenClaw Integration](/openclaw) — Use OpenClaw AI agents with Camoufox
+- [How-To Guides](/how-to) — Common foxbridge tasks and recipes
+- [Foxbridge vs Alternatives](/comparison) — Compare with native BiDi, Playwright, and Chrome

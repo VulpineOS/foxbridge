@@ -1,4 +1,9 @@
-# Juggler Backend
+---
+title: "Juggler Backend — Foxbridge Pipe Transport for Camoufox"
+description: "Foxbridge Juggler backend: FD 3/4 pipe transport with null-byte framing. Direct protocol mapping for Camoufox and Playwright Firefox."
+---
+
+# Juggler Backend — Pipe Transport for Camoufox
 
 The Juggler backend communicates with Camoufox (Firefox 146) via pipe file descriptors. It is the default and most complete backend, passing 74/74 Puppeteer integration tests.
 
@@ -92,3 +97,11 @@ Juggler handles request interception at the browser level, not the page level. T
 ## awaitPromise Support
 
 Juggler's `Runtime.evaluate` does not support `awaitPromise`. Foxbridge wraps the expression in an async IIFE: `(async () => { return await (expr) })()`.
+
+---
+
+## See also
+
+- [BiDi Backend](/bidi-backend) — WebDriver BiDi support for Firefox
+- [Architecture](/architecture) — How CDP-to-Firefox translation works under the hood
+- [CLI Reference](/cli-reference) — All foxbridge command line options

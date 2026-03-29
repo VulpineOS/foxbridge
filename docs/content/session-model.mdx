@@ -1,4 +1,9 @@
-# Session Model
+---
+title: "Session Model — CDP Session Management in Foxbridge"
+description: "Foxbridge dual-session model: TAB and PAGE sessions per target. How CDP sessions map to Juggler and BiDi sessions."
+---
+
+# Session Model — CDP Session Management
 
 Foxbridge implements a **dual-session model** to match Chrome's internal architecture. Puppeteer expects two CDP sessions per browser tab -- a tab session and a page session. Firefox has only one session per target, so foxbridge synthesizes the pair.
 
@@ -90,3 +95,11 @@ Workers (web workers, service workers) use a simpler single-session model. They 
 ## Browser Contexts
 
 Browser contexts (incognito-like isolated sessions) are tracked on each `SessionInfo`. When a cookie or emulation command includes a `sessionID`, foxbridge looks up the `browserContextId` from the session and forwards it to Juggler. This enables per-context isolation for cookies, storage, viewport, geolocation, and user agent.
+
+---
+
+## See also
+
+- [Architecture](/architecture) — How CDP-to-Firefox translation works under the hood
+- [Context Management](/context-management) — Execution context isolation and tracking
+- [Event Translation](/event-translation) — Juggler to CDP event mapping

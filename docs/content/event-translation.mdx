@@ -1,4 +1,9 @@
-# Event Translation
+---
+title: "Event Translation — Juggler to CDP Event Mapping"
+description: "How foxbridge translates Firefox Juggler events to Chrome DevTools Protocol events. Navigation, console, network, and dialog event mappings."
+---
+
+# Event Translation — Juggler and BiDi to CDP
 
 Foxbridge subscribes to Juggler/BiDi events and translates them into CDP events that Puppeteer expects. This page documents every translation.
 
@@ -77,3 +82,11 @@ WebSocket URLs (`ws://`, `wss://`) also trigger `Network.webSocketCreated`. Requ
 ## BiDi-Specific Differences
 
 When running with the BiDi backend, foxbridge emits `Runtime.executionContextsCleared` on navigation (since BiDi lacks an explicit equivalent). Context destruction also cleans up all derived isolated world mappings pointing to the same realm.
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [Session Model](/session-model) — CDP session management and dual-session model
+- [Juggler Backend](/juggler-backend) — Pipe transport for Camoufox

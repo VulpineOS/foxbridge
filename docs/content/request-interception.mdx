@@ -1,4 +1,9 @@
-# Request Interception
+---
+title: "Request Interception — Block and Modify HTTP Requests in Firefox"
+description: "Intercept, modify, and block HTTP requests in Firefox using CDP Fetch domain via foxbridge. Full Puppeteer request interception support."
+---
+
+# Request Interception — Block and Modify HTTP Requests
 
 Foxbridge implements the CDP `Fetch` domain for request interception, translating to Juggler's `Browser.setRequestInterception` API.
 
@@ -69,3 +74,11 @@ The `requestId` is shared between both events. Foxbridge resolves the correct CD
 ## BiDi Backend
 
 On the BiDi backend, request interception uses `network.addIntercept` with the `beforeRequestSent` phase. Intercept IDs are tracked for cleanup when interception is disabled.
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [Cookies & Storage](/cookies-storage) — Manage browser cookies in Firefox via CDP
+- [How-To Guides](/how-to) — Common foxbridge tasks and recipes

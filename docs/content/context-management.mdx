@@ -1,4 +1,9 @@
-# Context Management
+---
+title: "Context Management — Browser Context Isolation in Foxbridge"
+description: "How foxbridge manages browser contexts for multi-agent isolation. Per-context cookies, storage, and fingerprints via Camoufox."
+---
+
+# Context Management — Browser Context Isolation
 
 Execution contexts are the bridge between CDP's numeric context IDs and Juggler's string-based context identifiers. Foxbridge maintains a bidirectional mapping and tracks the latest context per session to handle navigation and isolated worlds.
 
@@ -86,3 +91,11 @@ When `releaseObject` is called, foxbridge checks `nodeObjects` first. If the obj
 ## BiDi Differences
 
 On the BiDi backend, foxbridge emits `Runtime.executionContextsCleared` on navigation since BiDi lacks an explicit equivalent. Context destruction also cleans up all derived isolated world context IDs pointing to the same realm. The `$eval` combine pattern is disabled for BiDi because `script.callFunction` handles object binding natively.
+
+---
+
+## See also
+
+- [Session Model](/session-model) — CDP session management and dual-session model
+- [Cookies & Storage](/cookies-storage) — Per-context cookie isolation
+- [VulpineOS Integration](/vulpineos) — Embedded foxbridge for AI browser agents

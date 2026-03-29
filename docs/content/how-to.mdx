@@ -1,3 +1,8 @@
+---
+title: "How-To Guides — Common Foxbridge Tasks and Recipes"
+description: "Step-by-step guides: Puppeteer with Firefox, OpenClaw with Camoufox, request interception, PDF generation, multiple agent fingerprints."
+---
+
 # How-To Guides
 
 Common tasks with foxbridge.
@@ -101,3 +106,12 @@ const pdf = await page.pdf({ format: 'A4' });
 Use VulpineOS with foxbridge. VulpineOS strips hidden DOM nodes (display:none, opacity:0, off-screen elements) from the accessibility tree before the AI reads the page. This prevents malicious websites from injecting invisible instructions.
 
 See [VulpineOS documentation](https://vulpineos.com/injection-filter) for details.
+
+---
+
+## See also
+
+- [Quick Start](/quick-start) — Install and run foxbridge in 2 minutes
+- [Puppeteer Integration](/puppeteer) — Full Puppeteer compatibility guide
+- [OpenClaw Integration](/openclaw) — Use OpenClaw AI agents with Camoufox
+- [Foxbridge vs Alternatives](/comparison) — Compare with native BiDi, Playwright, and Chrome

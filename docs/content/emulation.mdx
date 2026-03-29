@@ -1,4 +1,9 @@
-# Device Emulation
+---
+title: "Device Emulation — Viewport, Geolocation, and User Agent in Firefox CDP"
+description: "Override viewport, user agent, geolocation, timezone, and locale in Firefox using CDP Emulation domain via foxbridge."
+---
+
+# Device Emulation — Viewport, Geolocation, User Agent
 
 Foxbridge translates CDP Emulation domain methods to Juggler's browser-level overrides. All emulation settings are scoped to the browser context, enabling per-agent device profiles.
 
@@ -98,3 +103,11 @@ Agent B (ctx-2): viewport 375x812, timezone Asia/Tokyo, locale ja-JP
 ```
 
 Both agents share the same Firefox process but see different emulated environments.
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [Input Handling](/input-handling) — Mouse, keyboard, and touch events
+- [Context Management](/context-management) — Browser context isolation in foxbridge

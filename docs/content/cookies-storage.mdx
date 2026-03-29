@@ -1,4 +1,9 @@
-# Cookies & Storage
+---
+title: "Cookies & Storage — Manage Browser Cookies in Firefox via CDP"
+description: "Set, get, and delete cookies in Firefox using CDP Network domain. Per-context cookie isolation for multi-agent setups."
+---
+
+# Cookies & Storage — Per-Context Cookie Management
 
 Foxbridge translates CDP cookie operations to Juggler's `Browser.setCookies`, `Browser.getCookies`, and `Browser.clearCookies` methods. All cookie operations are scoped to a browser context for isolation between agents.
 
@@ -91,3 +96,11 @@ Agent B: getCookies → sees only session=xyz
 ```
 
 VulpineOS persists cookies to the vault database when agents are deactivated, and restores them on reactivation.
+
+---
+
+## See also
+
+- [Context Management](/context-management) — Browser context isolation in foxbridge
+- [Request Interception](/request-interception) — Block and modify HTTP requests
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
