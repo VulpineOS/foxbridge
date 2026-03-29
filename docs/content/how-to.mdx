@@ -1,0 +1,103 @@
+# How-To Guides
+
+Common tasks with foxbridge.
+
+## How to Use Puppeteer with Firefox
+
+```bash
+# Install foxbridge
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+
+# Start foxbridge with Firefox
+foxbridge --binary /path/to/firefox --port 9222 --headless
+
+# Or with Camoufox for anti-detect
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+```javascript
+const puppeteer = require('puppeteer-core');
+
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+  defaultViewport: null,
+});
+
+const page = await browser.newPage();
+await page.goto('https://example.com');
+console.log(await page.title()); // "Example Domain"
+await browser.disconnect();
+```
+
+## How to Use OpenClaw with Camoufox
+
+Add to your `openclaw.json`:
+
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+Start foxbridge, then run OpenClaw. All browser actions go through Camoufox instead of Chrome.
+
+## How to Enable CDP for Firefox 129+
+
+Firefox 129+ supports WebDriver BiDi natively, but not CDP. Foxbridge adds CDP support:
+
+```bash
+foxbridge --backend bidi --binary /path/to/firefox --port 9222 --headless
+```
+
+This connects to Firefox's BiDi WebSocket and exposes a CDP endpoint. 62/62 Puppeteer tests pass.
+
+## How to Run Multiple Agents with Different Fingerprints
+
+Use browser contexts — each gets isolated cookies, storage, and can have a unique fingerprint:
+
+```javascript
+const ctx1 = await browser.createBrowserContext();
+const ctx2 = await browser.createBrowserContext();
+
+const page1 = await ctx1.newPage(); // Agent 1's browser
+const page2 = await ctx2.newPage(); // Agent 2's browser
+
+// Different cookies, different sessions, different fingerprints
+await page1.goto('https://example.com');
+await page2.goto('https://example.com');
+```
+
+With VulpineOS, fingerprints are applied automatically per context from the BrowserForge pipeline.
+
+## How to Intercept and Modify Requests
+
+```javascript
+await page.setRequestInterception(true);
+page.on('request', request => {
+  if (request.url().includes('ads')) {
+    request.abort();
+  } else {
+    request.continue();
+  }
+});
+await page.goto('https://example.com');
+```
+
+## How to Generate PDFs from Firefox
+
+```javascript
+const page = await browser.newPage();
+await page.goto('https://example.com');
+const pdf = await page.pdf({ format: 'A4' });
+// pdf is a Buffer containing valid PDF-1.3
+```
+
+## How to Prevent Prompt Injection in AI Agents
+
+Use VulpineOS with foxbridge. VulpineOS strips hidden DOM nodes (display:none, opacity:0, off-screen elements) from the accessibility tree before the AI reads the page. This prevents malicious websites from injecting invisible instructions.
+
+See [VulpineOS documentation](https://vulpineos.com/injection-filter) for details.

@@ -1,0 +1,45 @@
+# Foxbridge vs Alternatives
+
+How does foxbridge compare to other ways of automating Firefox?
+
+## Foxbridge vs Native WebDriver BiDi
+
+| Feature | Foxbridge | Native BiDi |
+|---------|-----------|-------------|
+| Protocol input | CDP (Puppeteer, OpenClaw) | BiDi only |
+| Puppeteer support | Full (74/74 tests) | Experimental |
+| OpenClaw support | Full | No |
+| Request interception | Full (Fetch domain) | Limited |
+| PDF generation | Full (IO streaming) | Full |
+| Performance metrics | Full (real timing) | No |
+| Anti-detect browser | Camoufox | Firefox only |
+| Production ready | Yes | Emerging |
+
+**When to use foxbridge:** You have existing CDP tools (Puppeteer, OpenClaw, browser-use) and want them to work with Firefox or Camoufox.
+
+**When to use native BiDi:** You're building a new tool from scratch and want to use the W3C standard directly.
+
+## Foxbridge vs Playwright Firefox
+
+Playwright has native Firefox support via its own Juggler fork. However:
+
+- Playwright's Juggler is **not the same** as Camoufox's Juggler — they diverged
+- Playwright doesn't expose CDP — tools that speak CDP can't use it
+- Playwright doesn't support Camoufox's anti-detect fingerprinting
+- Foxbridge bridges CDP directly to Camoufox's Juggler
+
+**When to use Playwright:** You control the entire automation stack and can use Playwright's API.
+
+**When to use foxbridge:** You need CDP compatibility, anti-detect fingerprinting, or OpenClaw integration.
+
+## Foxbridge vs Chrome/Chromium
+
+| Feature | Foxbridge + Camoufox | Chrome |
+|---------|---------------------|--------|
+| Bot detection | Undetectable (BrowserForge fingerprints) | Trivially detectable |
+| Per-context fingerprints | Yes (unique UA, WebGL, canvas per context) | No |
+| Memory per context | ~10-15MB | ~50-80MB |
+| CDP support | Full via foxbridge | Native |
+| Injection protection | VulpineOS AX filter | None |
+
+**The key advantage:** Camoufox via foxbridge gives you Chrome-level CDP compatibility with Firefox-level stealth.

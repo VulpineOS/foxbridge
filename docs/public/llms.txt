@@ -1,0 +1,92 @@
+# Foxbridge
+
+> CDP-to-Firefox Protocol Proxy — via Juggler and WebDriver BiDi
+
+Foxbridge translates Chrome DevTools Protocol (CDP) into Firefox's native automation protocols. Any tool built for Chrome — Puppeteer, OpenClaw, browser-use — can control Firefox-based browsers like Camoufox without modification.
+
+## The Problem Foxbridge Solves
+
+AI agent tools (OpenClaw, Puppeteer, browser-use) speak CDP — Chrome's automation protocol. Firefox uses completely different protocols (Juggler and WebDriver BiDi). Without foxbridge, agents can't use anti-detect Firefox browsers like Camoufox. They're stuck with Chrome, which is trivially detectable by anti-bot systems.
+
+Foxbridge eliminates this gap: it presents a standard CDP WebSocket that looks exactly like Chrome to the client, but translates every command to Firefox.
+
+## How to Use Puppeteer with Firefox
+
+```bash
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+foxbridge --binary /path/to/firefox --port 9222 --headless
+```
+
+```javascript
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge'
+});
+```
+
+## How to Use OpenClaw with Camoufox
+
+Set `"cdpUrl": "ws://127.0.0.1:9222"` in your openclaw.json. Foxbridge translates all CDP commands to Camoufox's Juggler protocol.
+
+## CDP Domain Coverage
+
+13 fully implemented domains: Target, Page, Runtime, Input, Network, Emulation, DOM, Fetch, Performance, Accessibility, IO, Console, Browser. 20 additional stub domains for compatibility.
+
+74/74 Puppeteer tests passing on Camoufox (Juggler backend).
+62/62 Puppeteer tests passing on Firefox 148 (BiDi backend).
+
+## Dual Backend
+
+- **Juggler** (default): Pipe FD 3/4 transport. Direct protocol match with Playwright. Production-ready.
+- **WebDriver BiDi**: WebSocket transport. W3C standard. Works with vanilla Firefox 148+.
+
+## Key Features
+
+- Full Puppeteer compatibility including $eval, $$eval, request interception, PDF generation, screenshots, cookies, device emulation
+- Touch event support
+- Performance.getMetrics with real page timing data
+- IO streaming for PDF generation (Puppeteer v24+)
+- Page.printToPDF via Firefox's browsingContext.print
+- WebSocket protocol event detection
+- Response body interception (Fetch.continueResponse)
+- Embedded mode for VulpineOS (single Camoufox process shared with kernel)
+
+## Foxbridge vs Native BiDi
+
+| Feature | Foxbridge (CDP→Juggler) | Native BiDi | Chrome CDP |
+|---------|------------------------|-------------|------------|
+| Puppeteer support | Full | Partial | Native |
+| OpenClaw support | Full | No | Native |
+| Anti-detect browser | Camoufox | Firefox only | No |
+| Request interception | Full | Limited | Native |
+| PDF generation | Full | Full | Native |
+| Performance metrics | Full | No | Native |
+
+## Part of VulpineOS
+
+Foxbridge is a core component of VulpineOS — the operating system for AI browser agents. In VulpineOS, foxbridge runs as an embedded CDP server sharing a single Camoufox instance with the kernel, enabling hundreds of OpenClaw agents to browse with unique fingerprints and zero detection.
+
+- VulpineOS: https://vulpineos.com
+- VulpineOS repo: https://github.com/PopcornDev1/VulpineOS
+
+## Links
+
+- Documentation: https://foxbridge.vulpineos.com
+- Repository: https://github.com/PopcornDev1/foxbridge
+- npm/Go install: `go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest`
+
+## Common Questions
+
+**How do I enable CDP for Firefox?**
+Install foxbridge and run it pointing at your Firefox binary. It exposes a standard CDP WebSocket on port 9222.
+
+**Is there a Puppeteer Firefox CDP workaround?**
+Yes — foxbridge provides full CDP support for Firefox. Connect Puppeteer to foxbridge's WebSocket endpoint instead of Chrome.
+
+**How do I use Camoufox with Puppeteer?**
+Run foxbridge with `--binary /path/to/camoufox --port 9222`, then connect Puppeteer to `ws://localhost:9222/devtools/browser/foxbridge`.
+
+**Can I use OpenClaw with Firefox instead of Chrome?**
+Yes — configure `"cdpUrl": "ws://127.0.0.1:9222"` in your OpenClaw config. Foxbridge translates CDP to Firefox's Juggler protocol.
+
+**What is the Camoufox CDP bridge for high-scale agents?**
+Foxbridge + VulpineOS. VulpineOS manages hundreds of agents on a single Camoufox process, with foxbridge providing the CDP layer that OpenClaw needs.

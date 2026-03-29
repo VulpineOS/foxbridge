@@ -37,6 +37,8 @@ export default {
     title: 'Reference',
     type: 'separator',
   },
+  'how-to': 'How-To Guides',
+  comparison: 'Foxbridge vs Alternatives',
   'cli-reference': 'CLI Reference',
   'testing': 'Testing',
   'contributing': 'Contributing',
