@@ -8,6 +8,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/PopcornDev1/foxbridge/actions/workflows/ci.yml"><img src="https://github.com/PopcornDev1/foxbridge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
+<p align="center">
   <a href="https://foxbridge.vulpineos.com">Documentation</a> ·
   <a href="https://github.com/PopcornDev1/VulpineOS">VulpineOS</a> ·
   <a href="https://github.com/PopcornDev1/foxbridge/issues">Issues</a>
@@ -59,6 +63,10 @@ foxbridge --backend bidi --bidi-url ws://localhost:9223/session
 # Now connect any CDP tool:
 # Puppeteer: puppeteer.connect({ browserWSEndpoint: 'ws://localhost:9222' })
 ```
+
+## Docs
+
+Full documentation is available at **[foxbridge.vulpineos.com](https://foxbridge.vulpineos.com)** — covering setup, CDP domain coverage, backend configuration, and VulpineOS integration.
 
 ## CDP Domain Coverage
 
@@ -120,6 +128,20 @@ type Backend interface {
 - **Juggler** (`--backend juggler`): Pipe FD 3/4 transport, null-byte JSON framing. Direct protocol match with Playwright. Default and most battle-tested.
 - **BiDi** (`--backend bidi`): WebSocket transport, W3C standard. The BiDi client internally translates Juggler-style calls to BiDi equivalents so the bridge layer works unchanged.
 
+## Embedded Mode (VulpineOS)
+
+When used inside [VulpineOS](https://github.com/PopcornDev1/VulpineOS), foxbridge runs as an embedded CDP server sharing a single Camoufox instance:
+
+```
+Kernel -> Camoufox (single process) -> Juggler pipe -> juggler.Client
+  ├── TUI (direct Juggler calls)
+  ├── MCP server (Juggler calls for browser tools)
+  └── Embedded foxbridge CDP server on :9222
+       └── OpenClaw connects via cdpUrl -> same Camoufox contexts
+```
+
+No separate process needed — VulpineOS imports foxbridge as a Go library and starts the CDP server in-process. OpenClaw agents automatically connect to Camoufox through the embedded bridge. Graceful fallback: if the foxbridge binary is not found, OpenClaw uses its built-in Chrome.
+
 ## CLI Flags
 
 | Flag | Default | Description |
@@ -133,6 +155,12 @@ type Backend interface {
 | `--bidi-port` | 9223 | BiDi port when auto-launching Firefox |
 
 ## Testing
+
+foxbridge has comprehensive test coverage across three layers:
+
+- **227 Go unit tests** — all passing with race detector (`go test -race ./...`)
+- **74/74 Puppeteer Juggler tests** — full Puppeteer test suite against the Juggler backend
+- **62/62 Puppeteer BiDi tests** — full Puppeteer test suite against the BiDi backend
 
 ```bash
 go test -race ./...
