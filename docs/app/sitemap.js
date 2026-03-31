@@ -24,6 +24,10 @@ const pages = [
   '/cli-reference',
   '/testing',
   '/contributing',
+  '/puppeteer-firefox-setup',
+  '/camoufox-cdp',
+  '/firefox-cdp-support',
+  '/openclaw-firefox',
 ]
 
 export default function sitemap() {
