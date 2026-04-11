@@ -626,3 +626,102 @@ func TestHandleDOM_SetFileInputFiles_Error(t *testing.T) {
 		t.Errorf("error code = %d, want -32000", cdpErr.Code)
 	}
 }
+
+func TestHandleDOM_DescribeNode_WithContentFrameId(t *testing.T) {
+	b, mb := newTestBridge()
+	// Page.describeNode returns contentFrameId for iframes
+	mb.SetResponse("", "Page.describeNode", json.RawMessage(`{"contentFrameId":"frame-iframe-1"}`), nil)
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{"result":{"value":"{\"nodeType\":1,\"nodeName\":\"IFRAME\",\"localName\":\"iframe\",\"nodeValue\":\"\",\"childCount\":0,\"attrs\":[\"src\",\"https://example.com\"]}"}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.describeNode",
+		Params: json.RawMessage(`{"objectId":"obj-iframe-1"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var parsed struct {
+		Node struct {
+			NodeName       string `json:"nodeName"`
+			LocalName      string `json:"localName"`
+			ContentFrameID string `json:"contentFrameId"`
+		} `json:"node"`
+	}
+	json.Unmarshal(result, &parsed)
+
+	if parsed.Node.ContentFrameID != "frame-iframe-1" {
+		t.Errorf("contentFrameId = %q, want frame-iframe-1", parsed.Node.ContentFrameID)
+	}
+	if parsed.Node.NodeName != "IFRAME" {
+		t.Errorf("nodeName = %q, want IFRAME", parsed.Node.NodeName)
+	}
+	if parsed.Node.LocalName != "iframe" {
+		t.Errorf("localName = %q, want iframe", parsed.Node.LocalName)
+	}
+}
+
+func TestHandleDOM_DescribeNode_NoContentFrameId(t *testing.T) {
+	b, mb := newTestBridge()
+	// Page.describeNode returns no contentFrameId for non-iframe elements
+	mb.SetResponse("", "Page.describeNode", json.RawMessage(`{}`), nil)
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{"result":{"value":"{\"nodeType\":1,\"nodeName\":\"DIV\",\"localName\":\"div\",\"nodeValue\":\"\",\"childCount\":2,\"attrs\":[\"class\",\"container\"]}"}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.describeNode",
+		Params: json.RawMessage(`{"objectId":"obj-div-1"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var parsed struct {
+		Node struct {
+			NodeName       string `json:"nodeName"`
+			ContentFrameID string `json:"contentFrameId"`
+		} `json:"node"`
+	}
+	json.Unmarshal(result, &parsed)
+
+	if parsed.Node.ContentFrameID != "" {
+		t.Errorf("contentFrameId should be empty for non-iframe, got %q", parsed.Node.ContentFrameID)
+	}
+	if parsed.Node.NodeName != "DIV" {
+		t.Errorf("nodeName = %q, want DIV", parsed.Node.NodeName)
+	}
+}
+
+func TestHandleDOM_DescribeNode_JugglerFallback(t *testing.T) {
+	b, mb := newTestBridge()
+	// Page.describeNode fails — should fall back to Runtime.callFunction only
+	mb.SetResponse("", "Page.describeNode", nil, fmt.Errorf("not supported"))
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{"result":{"value":"{\"nodeType\":1,\"nodeName\":\"SPAN\",\"localName\":\"span\",\"nodeValue\":\"\",\"childCount\":1,\"attrs\":[]}"}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.describeNode",
+		Params: json.RawMessage(`{"objectId":"obj-span-1"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var parsed struct {
+		Node struct {
+			NodeName string `json:"nodeName"`
+		} `json:"node"`
+	}
+	json.Unmarshal(result, &parsed)
+
+	if parsed.Node.NodeName != "SPAN" {
+		t.Errorf("nodeName = %q, want SPAN", parsed.Node.NodeName)
+	}
+}

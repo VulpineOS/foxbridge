@@ -180,7 +180,7 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 		}
 		return marshalResult(map[string]interface{}{"nodeIds": nodeIDs})
 
-	case "DOM.describeNode":
+	case "DOM.describeNode", "Page.describeNode":
 		var params struct {
 			NodeID        int    `json:"nodeId"`
 			BackendNodeID int    `json:"backendNodeId"`
@@ -202,7 +202,90 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			b.nodeObjectsMu.Unlock()
 		}
 
-		// If we have an objectId, get info via Runtime.callFunction
+		// Try Juggler's Page.describeNode first — it supports contentFrameId for iframes
+		if params.ObjectID != "" {
+			jugglerResult, jugglerErr := b.callJuggler(msg.SessionID, "Page.describeNode", map[string]interface{}{
+				"objectId": params.ObjectID,
+			})
+			if jugglerErr == nil {
+				// Parse Juggler result and merge with our node IDs
+				var jugglerNode struct {
+					ContentFrameID string `json:"contentFrameId"`
+				}
+				json.Unmarshal(jugglerResult, &jugglerNode)
+
+				// Still get DOM info via callFunction for full node details
+				expr := `function() {
+					var n = this;
+					return JSON.stringify({
+						nodeType: n.nodeType,
+						nodeName: n.nodeName,
+						localName: n.localName || '',
+						nodeValue: n.nodeValue || '',
+						childCount: n.childNodes ? n.childNodes.length : 0,
+						attrs: (function() {
+							var a = [];
+							if (n.attributes) {
+								for (var i = 0; i < n.attributes.length; i++) {
+									a.push(n.attributes[i].name, n.attributes[i].value);
+								}
+							}
+							return a;
+						})()
+					});
+				}`
+				result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
+					"functionDeclaration": expr,
+					"objectId":           params.ObjectID,
+					"returnByValue":      true,
+				})
+				if err == nil {
+					var callResult struct {
+						Result struct {
+							Value json.RawMessage `json:"value"`
+						} `json:"result"`
+					}
+					json.Unmarshal(result, &callResult)
+
+					var nodeInfo struct {
+						NodeType   int      `json:"nodeType"`
+						NodeName   string   `json:"nodeName"`
+						LocalName  string   `json:"localName"`
+						NodeValue  string   `json:"nodeValue"`
+						ChildCount int      `json:"childCount"`
+						Attrs      []string `json:"attrs"`
+					}
+					if callResult.Result.Value != nil {
+						var strVal string
+						if json.Unmarshal(callResult.Result.Value, &strVal) == nil {
+							json.Unmarshal([]byte(strVal), &nodeInfo)
+						} else {
+							json.Unmarshal(callResult.Result.Value, &nodeInfo)
+						}
+					}
+
+					node := map[string]interface{}{
+						"nodeId":         params.NodeID,
+						"backendNodeId":  params.BackendNodeID,
+						"nodeType":       nodeInfo.NodeType,
+						"nodeName":       nodeInfo.NodeName,
+						"localName":      nodeInfo.LocalName,
+						"nodeValue":      nodeInfo.NodeValue,
+						"childNodeCount": nodeInfo.ChildCount,
+						"attributes":     nodeInfo.Attrs,
+					}
+					if jugglerNode.ContentFrameID != "" {
+						node["contentFrameId"] = jugglerNode.ContentFrameID
+					}
+
+					return marshalResult(map[string]interface{}{
+						"node": node,
+					})
+				}
+			}
+		}
+
+		// Fallback: get info via Runtime.callFunction without Juggler describeNode
 		if params.ObjectID != "" {
 			expr := `function() {
 				var n = this;
