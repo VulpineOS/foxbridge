@@ -275,6 +275,10 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		})
 
 	case "Page.setInterceptFileChooserDialog":
+		_, err := b.callJuggler(msg.SessionID, "Page.setInterceptFileChooserDialog", msg.Params)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
 		return json.RawMessage(`{}`), nil
 
 	case "Page.addScriptToEvaluateOnNewDocument":
@@ -750,6 +754,44 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		}
 		return json.RawMessage(`{}`), nil
 
+	case "Page.startScreencast":
+		var params struct {
+			Format    string `json:"format"`
+			Quality   int    `json:"quality"`
+			MaxWidth  int    `json:"maxWidth"`
+			MaxHeight int    `json:"maxHeight"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+		width := 1280
+		height := 720
+		quality := 80
+		if params.MaxWidth > 0 {
+			width = params.MaxWidth
+		}
+		if params.MaxHeight > 0 {
+			height = params.MaxHeight
+		}
+		if params.Quality > 0 {
+			quality = params.Quality
+		}
+		result, err := b.callJuggler(msg.SessionID, "Page.startScreencast", map[string]interface{}{
+			"width": width, "height": height, "quality": quality,
+		})
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
+	case "Page.stopScreencast":
+		b.callJuggler(msg.SessionID, "Page.stopScreencast", nil)
+		return json.RawMessage(`{}`), nil
+
+	case "Page.screencastFrameAck":
+		b.callJuggler(msg.SessionID, "Page.screencastFrameAck", msg.Params)
+		return json.RawMessage(`{}`), nil
+
 	case "Page.resetNavigationHistory":
 		// No-op — Juggler does not support navigation history manipulation.
 		return json.RawMessage(`{}`), nil
@@ -780,6 +822,10 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"resources":   []interface{}{},
 			},
 		})
+
+	case "Page.describeNode":
+		// Delegate to DOM handler which supports Juggler's Page.describeNode for contentFrameId
+		return b.handleDOM(conn, msg)
 
 	case "Page.setDownloadBehavior":
 		var params struct {

@@ -747,3 +747,192 @@ func TestHandlePage_BrowserSetDownloadBehavior(t *testing.T) {
 		t.Errorf("result = %s, want {}", string(result))
 	}
 }
+
+func TestHandlePage_StartScreencast(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.startScreencast", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.startScreencast",
+		Params: json.RawMessage(`{"format":"jpeg","quality":50,"maxWidth":800,"maxHeight":600}`),
+	}
+
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	// Verify the call was made with correct params
+	calls := mb.CallsForMethod("Page.startScreencast")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call to Page.startScreencast, got %d", len(calls))
+	}
+
+	var params struct {
+		Width   int `json:"width"`
+		Height  int `json:"height"`
+		Quality int `json:"quality"`
+	}
+	json.Unmarshal(calls[0].Params, &params)
+	if params.Width != 800 {
+		t.Errorf("width = %d, want 800", params.Width)
+	}
+	if params.Height != 600 {
+		t.Errorf("height = %d, want 600", params.Height)
+	}
+	if params.Quality != 50 {
+		t.Errorf("quality = %d, want 50", params.Quality)
+	}
+}
+
+func TestHandlePage_StartScreencast_Defaults(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.startScreencast", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.startScreencast",
+		Params: json.RawMessage(`{}`),
+	}
+
+	_, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	calls := mb.CallsForMethod("Page.startScreencast")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+
+	var params struct {
+		Width   int `json:"width"`
+		Height  int `json:"height"`
+		Quality int `json:"quality"`
+	}
+	json.Unmarshal(calls[0].Params, &params)
+	if params.Width != 1280 {
+		t.Errorf("default width = %d, want 1280", params.Width)
+	}
+	if params.Height != 720 {
+		t.Errorf("default height = %d, want 720", params.Height)
+	}
+	if params.Quality != 80 {
+		t.Errorf("default quality = %d, want 80", params.Quality)
+	}
+}
+
+func TestHandlePage_StopScreencast(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.stopScreencast", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.stopScreencast",
+	}
+
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+}
+
+func TestHandlePage_ScreencastFrameAck(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.screencastFrameAck", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.screencastFrameAck",
+		Params: json.RawMessage(`{"sessionId":1}`),
+	}
+
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+}
+
+func TestHandlePage_SetInterceptFileChooserDialog(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.setInterceptFileChooserDialog", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.setInterceptFileChooserDialog",
+		Params: json.RawMessage(`{"enabled":true}`),
+	}
+
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	calls := mb.CallsForMethod("Page.setInterceptFileChooserDialog")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call to Page.setInterceptFileChooserDialog, got %d", len(calls))
+	}
+}
+
+func TestHandlePage_SetInterceptFileChooserDialog_Error(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.setInterceptFileChooserDialog", nil, fmt.Errorf("not supported"))
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.setInterceptFileChooserDialog",
+		Params: json.RawMessage(`{"enabled":true}`),
+	}
+
+	_, cdpErr := b.handlePage(nil, msg)
+	if cdpErr == nil {
+		t.Fatal("expected error")
+	}
+	if cdpErr.Code != -32000 {
+		t.Errorf("error code = %d, want -32000", cdpErr.Code)
+	}
+}
+
+func TestHandlePage_DescribeNode_DelegatesToDOM(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.describeNode", json.RawMessage(`{"contentFrameId":"frame-123"}`), nil)
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{"result":{"value":"{\"nodeType\":1,\"nodeName\":\"IFRAME\",\"localName\":\"iframe\",\"nodeValue\":\"\",\"childCount\":0,\"attrs\":[\"src\",\"https://example.com\"]}"}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Page.describeNode",
+		Params: json.RawMessage(`{"objectId":"obj-1"}`),
+	}
+
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var parsed struct {
+		Node struct {
+			NodeName       string `json:"nodeName"`
+			ContentFrameID string `json:"contentFrameId"`
+		} `json:"node"`
+	}
+	json.Unmarshal(result, &parsed)
+	if parsed.Node.ContentFrameID != "frame-123" {
+		t.Errorf("contentFrameId = %q, want frame-123", parsed.Node.ContentFrameID)
+	}
+	if parsed.Node.NodeName != "IFRAME" {
+		t.Errorf("nodeName = %q, want IFRAME", parsed.Node.NodeName)
+	}
+}
