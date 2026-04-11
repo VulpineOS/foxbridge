@@ -200,6 +200,32 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		}
 		return json.RawMessage(`{}`), nil
 
+	case "Input.dispatchDragEvent":
+		var params struct {
+			Type      string  `json:"type"`
+			X         float64 `json:"x"`
+			Y         float64 `json:"y"`
+			Modifiers int     `json:"modifiers"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		// Map CDP drag types to Juggler types
+		dragType := strings.ToLower(params.Type)
+		log.Printf("[input] drag: type=%s at (%v,%v)", dragType, params.X, params.Y)
+
+		_, err := b.callJuggler(msg.SessionID, "Page.dispatchDragEvent", map[string]interface{}{
+			"type":      dragType,
+			"x":         params.X,
+			"y":         params.Y,
+			"modifiers": params.Modifiers,
+		})
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return json.RawMessage(`{}`), nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
