@@ -278,6 +278,15 @@ func TestSetupEventSubscriptions_AllEventsSubscribed(t *testing.T) {
 		"Network.requestFinished",
 		"Network.requestFailed",
 		"Browser.requestIntercepted",
+		"Page.webSocketCreated",
+		"Page.webSocketOpened",
+		"Page.webSocketClosed",
+		"Page.webSocketFrameSent",
+		"Page.webSocketFrameReceived",
+		"Browser.downloadCreated",
+		"Browser.downloadFinished",
+		"Page.screencastFrame",
+		"Page.fileChooserOpened",
 	}
 
 	mb.mu.Lock()
@@ -324,4 +333,123 @@ func TestSetupEventSubscriptions_PendingFrameID(t *testing.T) {
 	if buffered != "frame-buffered" {
 		t.Errorf("buffered frameID = %q, want frame-buffered", buffered)
 	}
+}
+
+func TestSetupEventSubscriptions_WebSocketCreated(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	// Register a session so resolveCDPSession works
+	b.sessions.Add(&cdp.SessionInfo{
+		SessionID:        "cdp-s1",
+		JugglerSessionID: "jug-s1",
+		TargetID:         "t1",
+	})
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Page.webSocketCreated"]
+	mb.mu.Unlock()
+
+	if len(handlers) == 0 {
+		t.Fatal("no handler registered for Page.webSocketCreated")
+	}
+
+	params := json.RawMessage(`{"requestId":"ws-1","url":"wss://example.com/ws"}`)
+	handlers[0]("jug-s1", params)
+
+	// Event should be forwarded (via emitEventRaw which calls server.Broadcast)
+	// Since we can't easily capture broadcasts in the test, just verify the handler exists and runs without panic
+}
+
+func TestSetupEventSubscriptions_WebSocketFrameEvents(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	wsEvents := []string{
+		"Page.webSocketOpened",
+		"Page.webSocketClosed",
+		"Page.webSocketFrameSent",
+		"Page.webSocketFrameReceived",
+	}
+
+	mb.mu.Lock()
+	for _, event := range wsEvents {
+		if len(mb.handlers[event]) == 0 {
+			t.Errorf("no handler registered for %s", event)
+		}
+	}
+	mb.mu.Unlock()
+}
+
+func TestSetupEventSubscriptions_DownloadCreated(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Browser.downloadCreated"]
+	mb.mu.Unlock()
+
+	if len(handlers) == 0 {
+		t.Fatal("no handler registered for Browser.downloadCreated")
+	}
+
+	params := json.RawMessage(`{"uuid":"dl-1","url":"https://example.com/file.zip","suggestedFileName":"file.zip"}`)
+	handlers[0]("", params)
+}
+
+func TestSetupEventSubscriptions_DownloadFinished(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Browser.downloadFinished"]
+	mb.mu.Unlock()
+
+	if len(handlers) == 0 {
+		t.Fatal("no handler registered for Browser.downloadFinished")
+	}
+
+	// Test completed state
+	params := json.RawMessage(`{"uuid":"dl-1","canceled":false,"error":""}`)
+	handlers[0]("", params)
+
+	// Test canceled state
+	params = json.RawMessage(`{"uuid":"dl-2","canceled":true,"error":""}`)
+	handlers[0]("", params)
+
+	// Test error state
+	params = json.RawMessage(`{"uuid":"dl-3","canceled":false,"error":"disk full"}`)
+	handlers[0]("", params)
+}
+
+func TestSetupEventSubscriptions_ScreencastFrame(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Page.screencastFrame"]
+	mb.mu.Unlock()
+
+	if len(handlers) == 0 {
+		t.Fatal("no handler registered for Page.screencastFrame")
+	}
+
+	params := json.RawMessage(`{"data":"base64data","metadata":{"timestamp":1234}}`)
+	handlers[0]("jug-s1", params)
+}
+
+func TestSetupEventSubscriptions_FileChooserOpened(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Page.fileChooserOpened"]
+	mb.mu.Unlock()
+
+	if len(handlers) == 0 {
+		t.Fatal("no handler registered for Page.fileChooserOpened")
+	}
+
+	params := json.RawMessage(`{"executionContextId":"ctx-1","multiple":false}`)
+	handlers[0]("jug-s1", params)
 }

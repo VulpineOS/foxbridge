@@ -769,6 +769,84 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}, cdpSessionID)
 	})
 
+	// WebSocket events → Network.webSocket* CDP events
+	b.backend.Subscribe("Page.webSocketCreated", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Network.webSocketCreated", params, cdpSessionID)
+	})
+
+	b.backend.Subscribe("Page.webSocketOpened", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Network.webSocketWillSendHandshakeRequest", params, cdpSessionID)
+	})
+
+	b.backend.Subscribe("Page.webSocketClosed", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Network.webSocketClosed", params, cdpSessionID)
+	})
+
+	b.backend.Subscribe("Page.webSocketFrameSent", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Network.webSocketFrameSent", params, cdpSessionID)
+	})
+
+	b.backend.Subscribe("Page.webSocketFrameReceived", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Network.webSocketFrameReceived", params, cdpSessionID)
+	})
+
+	// Download events → CDP Page.downloadWillBegin / Page.downloadProgress
+	b.backend.Subscribe("Browser.downloadCreated", func(sessionID string, params json.RawMessage) {
+		var ev struct {
+			UUID              string `json:"uuid"`
+			URL               string `json:"url"`
+			SuggestedFileName string `json:"suggestedFileName"`
+		}
+		json.Unmarshal(params, &ev)
+
+		// Download events are browser-level — broadcast to all page sessions
+		b.emitEvent("Page.downloadWillBegin", map[string]interface{}{
+			"frameId":           "",
+			"guid":              ev.UUID,
+			"url":               ev.URL,
+			"suggestedFilename": ev.SuggestedFileName,
+		}, "")
+	})
+
+	b.backend.Subscribe("Browser.downloadFinished", func(sessionID string, params json.RawMessage) {
+		var ev struct {
+			UUID     string `json:"uuid"`
+			Canceled bool   `json:"canceled"`
+			Error    string `json:"error"`
+		}
+		json.Unmarshal(params, &ev)
+
+		state := "completed"
+		if ev.Canceled {
+			state = "canceled"
+		}
+		if ev.Error != "" {
+			state = "canceled"
+		}
+
+		b.emitEvent("Page.downloadProgress", map[string]interface{}{
+			"guid":  ev.UUID,
+			"state": state,
+		}, "")
+	})
+
+	// Screencast frame events
+	b.backend.Subscribe("Page.screencastFrame", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Page.screencastFrame", params, cdpSessionID)
+	})
+
+	// File chooser events
+	b.backend.Subscribe("Page.fileChooserOpened", func(jugglerSessionID string, params json.RawMessage) {
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		b.emitEventRaw("Page.fileChooserOpened", params, cdpSessionID)
+	})
+
 	// Browser.requestIntercepted → Fetch.requestPaused
 	b.backend.Subscribe("Browser.requestIntercepted", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
