@@ -1,0 +1,116 @@
+---
+title: "VulpineOS Method Passthrough"
+description: "Which VulpineOS-specific Juggler methods foxbridge forwards today, how to call them from CDP clients, and which methods are not CDP-native."
+---
+
+# VulpineOS Method Passthrough
+
+foxbridge primarily translates standard CDP methods into Firefox
+Juggler. It also forwards a small set of VulpineOS-specific `Page.*`
+methods directly so CDP clients can access them without speaking
+Juggler.
+
+## Currently forwarded methods
+
+foxbridge currently forwards these methods directly to the Juggler
+backend:
+
+- `Page.getOptimizedDOM`
+- `Page.resolveRef`
+- `Page.focusByRef`
+- `Page.setActionLock`
+- `Page.getShadowDOM`
+
+These are not Chrome-native CDP methods. They only work when the target
+browser is a VulpineOS/Camoufox build that implements the matching
+Juggler methods.
+
+## How to call them
+
+Use a page-scoped CDP session, not the browser-level connection.
+
+### Puppeteer
+
+```js
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+});
+
+const page = await browser.newPage();
+const client = await page.target().createCDPSession();
+
+const dom = await client.send('Page.getOptimizedDOM', {
+  maxDepth: 10,
+  maxNodes: 200,
+});
+
+await client.send('Page.setActionLock', { enabled: true });
+await client.send('Page.focusByRef', { ref: '@3' });
+```
+
+### chrome-remote-interface
+
+```js
+const CDP = require('chrome-remote-interface');
+
+const client = await CDP();
+const { Target } = client;
+
+const { targetId } = await Target.createTarget({ url: 'about:blank' });
+const { sessionId } = await Target.attachToTarget({ targetId, flatten: true });
+
+await client.send('Page.getOptimizedDOM', {
+  maxNodes: 150,
+}, sessionId);
+```
+
+## Why these methods exist
+
+These methods expose VulpineOS browser-side features that are useful to
+agents but do not exist in standard CDP:
+
+- `Page.getOptimizedDOM`: token-reduced semantic DOM export
+- `Page.resolveRef`: map a `@N` reference back to a concrete target
+- `Page.focusByRef`: focus an element from a semantic reference
+- `Page.setActionLock`: freeze page execution while the agent reasons
+- `Page.getShadowDOM`: inspect shadow-root content through the browser
+
+This keeps foxbridge useful for agent tooling while staying explicit
+about what is VulpineOS-specific behavior.
+
+## Limitations
+
+Not every VulpineOS or private Juggler method is exposed through
+foxbridge.
+
+Methods that are **not** currently forwarded include:
+
+- `Page.getAnnotatedScreenshot`
+- `Page.secureSetInputValue`
+- `Browser.startAudioCapture`
+- `Browser.stopAudioCapture`
+- `Browser.getAudioChunk`
+
+For those features:
+
+- use VulpineOS MCP tools when available
+- or use the direct Juggler path inside VulpineOS
+- or extend foxbridge explicitly rather than assuming arbitrary Juggler
+  methods will pass through
+
+If a method is not implemented, foxbridge returns a standard CDP
+`method not found` error.
+
+## Compatibility note
+
+These passthrough methods are a foxbridge convenience for VulpineOS
+users. They are not part of Chrome CDP and should be treated as
+VulpineOS-specific extensions by client code.
+
+---
+
+## See also
+
+- [VulpineOS](/vulpineos)
+- [CDP Domain Coverage](/cdp-coverage)
+- [OpenClaw](/openclaw)

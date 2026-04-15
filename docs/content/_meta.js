@@ -31,6 +31,7 @@ export default {
     type: 'separator',
   },
   'vulpineos': 'VulpineOS',
+  'vulpine-methods': 'VulpineOS Methods',
   'puppeteer': 'Puppeteer',
   'openclaw': 'OpenClaw',
   '---guides': {

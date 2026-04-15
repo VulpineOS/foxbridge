@@ -68,6 +68,9 @@ foxbridge --backend bidi --bidi-url ws://localhost:9223/session
 
 Full documentation is available at **[foxbridge.vulpineos.com](https://foxbridge.vulpineos.com)** — covering setup, CDP domain coverage, backend configuration, and VulpineOS integration.
 
+If you are using foxbridge with VulpineOS-specific `Page.*` extensions,
+see the passthrough guide in the docs: `VulpineOS Methods`.
+
 ## CDP Domain Coverage
 
 | Domain | Methods | Status |
