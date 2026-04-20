@@ -325,9 +325,10 @@ func (b *Bridge) navigateNewTarget(targetID, url string) error {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		info, ok := b.sessions.GetByTarget(targetID)
-		if ok {
+		if ok && info.FrameID != "" {
 			_, err := b.callJuggler(info.SessionID, "Page.navigate", map[string]interface{}{
-				"url": url,
+				"frameId": info.FrameID,
+				"url":     url,
 			})
 			if err != nil {
 				return fmt.Errorf("navigate new target %s to %s: %w", targetID, url, err)

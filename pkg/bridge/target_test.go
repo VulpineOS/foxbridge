@@ -90,6 +90,7 @@ func TestHandleTarget_CreateTargetNavigatesInitialURL(t *testing.T) {
 			JugglerSessionID: "jug-page-1",
 			TargetID:         "page-1",
 			BrowserContextID: "ctx-1",
+			FrameID:          "mainframe-1",
 			Type:             "page",
 		})
 	}()
@@ -124,6 +125,9 @@ func TestHandleTarget_CreateTargetNavigatesInitialURL(t *testing.T) {
 	}
 	if got := params["url"]; got != "https://example.com" {
 		t.Fatalf("navigate url = %v, want https://example.com", got)
+	}
+	if got := params["frameId"]; got != "mainframe-1" {
+		t.Fatalf("navigate frameId = %v, want mainframe-1", got)
 	}
 }
 
