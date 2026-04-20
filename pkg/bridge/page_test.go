@@ -320,6 +320,7 @@ func TestHandlePage_GetResourceTree(t *testing.T) {
 		TargetID:  "t1",
 		FrameID:   "frame-xyz",
 		URL:       "https://test.com",
+		Type:      "page",
 	})
 
 	msg := &cdp.Message{
@@ -343,8 +344,8 @@ func TestHandlePage_GetResourceTree(t *testing.T) {
 	}
 	json.Unmarshal(result, &res)
 
-	if res.FrameTree.Frame.ID != "frame-xyz" {
-		t.Errorf("frame id = %q, want frame-xyz", res.FrameTree.Frame.ID)
+	if res.FrameTree.Frame.ID != "t1" {
+		t.Errorf("frame id = %q, want t1", res.FrameTree.Frame.ID)
 	}
 }
 
@@ -604,6 +605,7 @@ func TestHandlePage_GetFrameTree_WaitsForSessionFrameState(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		b.sessions.Add(&cdp.SessionInfo{
 			SessionID: "page-s1",
+			TargetID:  "target-1",
 			FrameID:   "mainframe-1",
 			URL:       "https://example.com",
 			Type:      "page",
@@ -631,8 +633,8 @@ func TestHandlePage_GetFrameTree_WaitsForSessionFrameState(t *testing.T) {
 	if err := json.Unmarshal(result, &res); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
-	if res.FrameTree.Frame.ID != "mainframe-1" {
-		t.Fatalf("frame id = %q, want mainframe-1", res.FrameTree.Frame.ID)
+	if res.FrameTree.Frame.ID != "target-1" {
+		t.Fatalf("frame id = %q, want target-1", res.FrameTree.Frame.ID)
 	}
 	if res.FrameTree.Frame.URL != "https://example.com" {
 		t.Fatalf("frame url = %q, want https://example.com", res.FrameTree.Frame.URL)

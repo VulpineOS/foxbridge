@@ -33,7 +33,7 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			jugglerParams["referer"] = params.Referrer
 		}
 		if params.FrameID != "" {
-			jugglerParams["frameId"] = params.FrameID
+			jugglerParams["frameId"] = b.jugglerFrameIDForSession(msg.SessionID, params.FrameID)
 		}
 
 		// Use the stored frameId if available, otherwise try to discover it
@@ -61,7 +61,7 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			navResult.NavigationID, navResult.FrameID, string(result)[:min(len(result), 200)])
 
 		return marshalResult(map[string]interface{}{
-			"frameId":  navResult.FrameID,
+			"frameId":  b.cdpFrameIDForSession(msg.SessionID, navResult.FrameID),
 			"loaderId": navResult.NavigationID,
 		})
 
@@ -93,6 +93,7 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		// Juggler doesn't emit navigation lifecycle events for reload.
 		// Puppeteer expects them, so we emit them ourselves.
 		if frameID != "" {
+			cdpFrameID := b.cdpFrameIDForSession(msg.SessionID, frameID)
 			loaderId := fmt.Sprintf("reload-%d", b.nextCtxID())
 
 			// Store for eventFired consistency
@@ -102,32 +103,32 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 			go func() {
 				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-					"frameId": frameID, "loaderId": loaderId, "name": "init", "timestamp": 0,
+					"frameId": cdpFrameID, "loaderId": loaderId, "name": "init", "timestamp": 0,
 				}, msg.SessionID)
 				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-					"frameId": frameID, "loaderId": loaderId, "name": "commit", "timestamp": 0,
+					"frameId": cdpFrameID, "loaderId": loaderId, "name": "commit", "timestamp": 0,
 				}, msg.SessionID)
 				b.emitEvent("Page.frameNavigated", map[string]interface{}{
 					"frame": map[string]interface{}{
-						"id": frameID, "url": pageURL, "loaderId": loaderId,
+						"id": cdpFrameID, "url": pageURL, "loaderId": loaderId,
 						"securityOrigin": "", "mimeType": "text/html", "domainAndRegistry": "",
 					},
 					"type": "Navigation",
 				}, msg.SessionID)
 				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-					"frameId": frameID, "loaderId": loaderId, "name": "DOMContentLoaded", "timestamp": 0,
+					"frameId": cdpFrameID, "loaderId": loaderId, "name": "DOMContentLoaded", "timestamp": 0,
 				}, msg.SessionID)
 				b.emitEvent("Page.domContentEventFired", map[string]interface{}{
 					"timestamp": 0,
 				}, msg.SessionID)
 				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-					"frameId": frameID, "loaderId": loaderId, "name": "load", "timestamp": 0,
+					"frameId": cdpFrameID, "loaderId": loaderId, "name": "load", "timestamp": 0,
 				}, msg.SessionID)
 				b.emitEvent("Page.loadEventFired", map[string]interface{}{
 					"timestamp": 0,
 				}, msg.SessionID)
 				b.emitEvent("Page.frameStoppedLoading", map[string]interface{}{
-					"frameId": frameID,
+					"frameId": cdpFrameID,
 				}, msg.SessionID)
 			}()
 		}
@@ -277,11 +278,12 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			frameID = "main"
 			log.Printf("[page] getFrameTree: WARNING no frameId available for session %s, using placeholder", msg.SessionID)
 		}
+		cdpFrameID := b.cdpFrameIDForSession(msg.SessionID, frameID)
 
 		return marshalResult(map[string]interface{}{
 			"frameTree": map[string]interface{}{
 				"frame": map[string]interface{}{
-					"id":                             frameID,
+					"id":                             cdpFrameID,
 					"loaderId":                       "",
 					"url":                            pageURL,
 					"securityOrigin":                 "",
@@ -423,7 +425,7 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			"url": "data:text/html," + params.HTML,
 		}
 		if params.FrameID != "" {
-			navParams["frameId"] = params.FrameID
+			navParams["frameId"] = b.jugglerFrameIDForSession(msg.SessionID, params.FrameID)
 		}
 		_, err := b.callJuggler(msg.SessionID, "Page.navigate", navParams)
 		if err != nil {
@@ -829,11 +831,12 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		if frameID == "" {
 			frameID = "main"
 		}
+		cdpFrameID := b.cdpFrameIDForSession(msg.SessionID, frameID)
 
 		return marshalResult(map[string]interface{}{
 			"frameTree": map[string]interface{}{
 				"frame": map[string]interface{}{
-					"id":             frameID,
+					"id":             cdpFrameID,
 					"loaderId":       "",
 					"url":            pageURL,
 					"securityOrigin": "",

@@ -202,6 +202,59 @@ func (b *Bridge) latestContextForSession(cdpSessionID string) string {
 	return b.latestCtx[jugglerSessionID]
 }
 
+func (b *Bridge) cdpFrameIDForSession(cdpSessionID, frameID string) string {
+	if frameID == "" {
+		return frameID
+	}
+	info, ok := b.sessions.Get(cdpSessionID)
+	if !ok {
+		return frameID
+	}
+	return b.cdpFrameIDForInfo(info, frameID)
+}
+
+func (b *Bridge) cdpFrameIDForJugglerSession(jugglerSessionID, frameID string) string {
+	if frameID == "" {
+		return frameID
+	}
+	if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
+		return b.cdpFrameIDForInfo(info, frameID)
+	}
+	b.autoAttach.mu.Lock()
+	pair, ok := b.autoAttach.pairs[jugglerSessionID]
+	b.autoAttach.mu.Unlock()
+	if ok {
+		if info, ok := b.sessions.Get(pair.pageSessionID); ok {
+			return b.cdpFrameIDForInfo(info, frameID)
+		}
+	}
+	return frameID
+}
+
+func (b *Bridge) cdpFrameIDForInfo(info *cdp.SessionInfo, frameID string) string {
+	if info == nil || frameID == "" {
+		return frameID
+	}
+	if info.Type == "page" && info.FrameID != "" && info.TargetID != "" && frameID == info.FrameID {
+		return info.TargetID
+	}
+	return frameID
+}
+
+func (b *Bridge) jugglerFrameIDForSession(cdpSessionID, frameID string) string {
+	if frameID == "" {
+		return frameID
+	}
+	info, ok := b.sessions.Get(cdpSessionID)
+	if !ok {
+		return frameID
+	}
+	if info.Type == "page" && info.FrameID != "" && info.TargetID != "" && frameID == info.TargetID {
+		return info.FrameID
+	}
+	return frameID
+}
+
 // emitEvent sends a CDP event to all connected clients.
 func (b *Bridge) emitEvent(method string, params interface{}, sessionID string) {
 	var raw json.RawMessage

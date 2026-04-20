@@ -279,13 +279,20 @@ func TestCallJuggler_SessionResolution(t *testing.T) {
 
 func TestHandlePage_Navigate(t *testing.T) {
 	b, mb := newTestBridge()
+	b.sessions.Add(&cdp.SessionInfo{
+		SessionID: "page-s1",
+		TargetID:  "target-1",
+		FrameID:   "mainframe-1",
+		Type:      "page",
+	})
 
 	mb.SetResponse("", "Page.navigate", json.RawMessage(`{"navigationId":"nav-1","frameId":"frame-1"}`), nil)
 
 	msg := &cdp.Message{
-		ID:     1,
-		Method: "Page.navigate",
-		Params: json.RawMessage(`{"url":"https://example.com"}`),
+		ID:        1,
+		Method:    "Page.navigate",
+		SessionID: "page-s1",
+		Params:    json.RawMessage(`{"url":"https://example.com"}`),
 	}
 
 	result, cdpErr := b.handlePage(nil, msg)
@@ -301,6 +308,50 @@ func TestHandlePage_Navigate(t *testing.T) {
 	}
 	if res["loaderId"] != "nav-1" {
 		t.Errorf("loaderId = %v, want nav-1", res["loaderId"])
+	}
+}
+
+func TestHandlePage_Navigate_TranslatesMainFrameID(t *testing.T) {
+	b, mb := newTestBridge()
+	b.sessions.Add(&cdp.SessionInfo{
+		SessionID:        "page-s1",
+		JugglerSessionID: "jug-page-1",
+		TargetID:         "target-1",
+		FrameID:          "mainframe-1",
+		Type:             "page",
+	})
+
+	mb.SetResponse("jug-page-1", "Page.navigate", json.RawMessage(`{"navigationId":"nav-1","frameId":"mainframe-1"}`), nil)
+
+	msg := &cdp.Message{
+		ID:        1,
+		Method:    "Page.navigate",
+		SessionID: "page-s1",
+		Params:    json.RawMessage(`{"url":"https://example.com","frameId":"target-1"}`),
+	}
+
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("handlePage error: %s", cdpErr.Message)
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(result, &res)
+
+	if res["frameId"] != "target-1" {
+		t.Errorf("frameId = %v, want target-1", res["frameId"])
+	}
+
+	last, err := mb.LastCall()
+	if err != nil {
+		t.Fatalf("last call: %v", err)
+	}
+	var params map[string]interface{}
+	if err := json.Unmarshal(last.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if params["frameId"] != "mainframe-1" {
+		t.Errorf("navigate frameId = %v, want mainframe-1", params["frameId"])
 	}
 }
 

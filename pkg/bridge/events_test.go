@@ -54,6 +54,41 @@ func TestResolveCDPSession_NotFound(t *testing.T) {
 	}
 }
 
+func TestCDPFrameIDForJugglerSession_MainFrameUsesTargetID(t *testing.T) {
+	b, _ := newTestBridge()
+	b.sessions.Add(&cdp.SessionInfo{
+		SessionID:        "page-s1",
+		JugglerSessionID: "jug-s1",
+		TargetID:         "target-1",
+		FrameID:          "mainframe-1",
+		Type:             "page",
+	})
+
+	if got := b.cdpFrameIDForJugglerSession("jug-s1", "mainframe-1"); got != "target-1" {
+		t.Fatalf("cdpFrameIDForJugglerSession(main frame) = %q, want target-1", got)
+	}
+	if got := b.cdpFrameIDForJugglerSession("jug-s1", "child-frame-1"); got != "child-frame-1" {
+		t.Fatalf("cdpFrameIDForJugglerSession(child frame) = %q, want child-frame-1", got)
+	}
+}
+
+func TestJugglerFrameIDForSession_MainFrameUsesStoredFrameID(t *testing.T) {
+	b, _ := newTestBridge()
+	b.sessions.Add(&cdp.SessionInfo{
+		SessionID: "page-s1",
+		TargetID:  "target-1",
+		FrameID:   "mainframe-1",
+		Type:      "page",
+	})
+
+	if got := b.jugglerFrameIDForSession("page-s1", "target-1"); got != "mainframe-1" {
+		t.Fatalf("jugglerFrameIDForSession(main frame) = %q, want mainframe-1", got)
+	}
+	if got := b.jugglerFrameIDForSession("page-s1", "child-frame-1"); got != "child-frame-1" {
+		t.Fatalf("jugglerFrameIDForSession(child frame) = %q, want child-frame-1", got)
+	}
+}
+
 func TestSetupEventSubscriptions_AttachedToTarget(t *testing.T) {
 	b, mb := newTestBridge()
 	b.SetupEventSubscriptions()

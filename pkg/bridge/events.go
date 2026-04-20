@@ -242,6 +242,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.FrameID)
 
 		// Skip intermediate about:blank navigations during reload/redirect.
 		// Juggler emits navigation to about:blank before navigating to the real URL.
@@ -285,13 +286,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		// Emit lifecycle events in Chrome's order
 		b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-			"frameId":   ev.FrameID,
+			"frameId":   cdpFrameID,
 			"loaderId":  loaderId,
 			"name":      "init",
 			"timestamp": 0,
 		}, cdpSessionID)
 		b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-			"frameId":   ev.FrameID,
+			"frameId":   cdpFrameID,
 			"loaderId":  loaderId,
 			"name":      "commit",
 			"timestamp": 0,
@@ -299,7 +300,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		b.emitEvent("Page.frameNavigated", map[string]interface{}{
 			"frame": map[string]interface{}{
-				"id":                ev.FrameID,
+				"id":                cdpFrameID,
 				"url":               ev.URL,
 				"loaderId":          loaderId,
 				"securityOrigin":    "",
@@ -324,6 +325,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.FrameID)
 
 		// Use the same loaderId as the navigation that triggered this event
 		b.loaderMapMu.RLock()
@@ -339,13 +341,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"timestamp": 0,
 			}, cdpSessionID)
 			b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-				"frameId":   ev.FrameID,
+				"frameId":   cdpFrameID,
 				"loaderId":  loaderId,
 				"name":      "load",
 				"timestamp": 0,
 			}, cdpSessionID)
 			b.emitEvent("Page.frameStoppedLoading", map[string]interface{}{
-				"frameId": ev.FrameID,
+				"frameId": cdpFrameID,
 			}, cdpSessionID)
 
 			// NOTE: Isolated worlds are NOT re-emitted here.
@@ -355,7 +357,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"timestamp": 0,
 			}, cdpSessionID)
 			b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
-				"frameId":   ev.FrameID,
+				"frameId":   cdpFrameID,
 				"loaderId":  loaderId,
 				"name":      "DOMContentLoaded",
 				"timestamp": 0,
@@ -424,6 +426,8 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
 
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.AuxData.FrameID)
+
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
 				"id":       ctxID,
@@ -433,7 +437,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"auxData": map[string]interface{}{
 					"isDefault": true,
 					"type":      "default",
-					"frameId":   ev.AuxData.FrameID,
+					"frameId":   cdpFrameID,
 				},
 			},
 		}, cdpSessionID)
@@ -446,7 +450,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			worlds := b.isolatedWorlds[cdpSessionID]
 			b.isolatedWorldsMu.RUnlock()
 
-			frameID := ev.AuxData.FrameID
+			frameID := cdpFrameID
 			for _, w := range worlds {
 				isoCtxID := b.nextCtxID()
 				b.ctxMapMu.Lock()
@@ -570,10 +574,12 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.FrameID)
+		cdpParentFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.ParentFrameID)
 
 		b.emitEvent("Page.frameAttached", map[string]interface{}{
-			"frameId":       ev.FrameID,
-			"parentFrameId": ev.ParentFrameID,
+			"frameId":       cdpFrameID,
+			"parentFrameId": cdpParentFrameID,
 		}, cdpSessionID)
 	})
 
@@ -588,9 +594,10 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.FrameID)
 
 		b.emitEvent("Page.frameDetached", map[string]interface{}{
-			"frameId": ev.FrameID,
+			"frameId": cdpFrameID,
 			"reason":  "remove",
 		}, cdpSessionID)
 	})
@@ -657,6 +664,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.FrameID)
 
 		cdpHeaders := map[string]string{}
 		for k, v := range ev.Headers {
@@ -698,7 +706,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"type": "other",
 			},
 			"type":    resourceType,
-			"frameId": ev.FrameID,
+			"frameId": cdpFrameID,
 		}, cdpSessionID)
 	})
 
@@ -719,6 +727,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.FrameID)
 
 		b.emitEvent("Network.responseReceived", map[string]interface{}{
 			"requestId": ev.RequestID,
@@ -739,7 +748,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"fromPrefetchCache": false,
 				"securityState":     "secure",
 			},
-			"frameId": ev.FrameID,
+			"frameId": cdpFrameID,
 		}, cdpSessionID)
 	})
 
@@ -927,6 +936,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 			}
 		}
 
+		cdpFrameID := ev.FrameID
+		if cdpSessionID != "" {
+			cdpFrameID = b.cdpFrameIDForSession(cdpSessionID, ev.FrameID)
+		}
+
 		log.Printf("[event] Browser.requestIntercepted → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, url, cdpSessionID)
 
 		// Emit Network.requestWillBeSent BEFORE Fetch.requestPaused.
@@ -946,7 +960,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			"wallTime":  0,
 			"initiator": map[string]interface{}{"type": "other"},
 			"type":      resourceType,
-			"frameId":   ev.FrameID,
+			"frameId":   cdpFrameID,
 		}, cdpSessionID)
 
 		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
@@ -959,7 +973,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				"initialPriority": "High",
 				"referrerPolicy":  "strict-origin-when-cross-origin",
 			},
-			"frameId":      ev.FrameID,
+			"frameId":      cdpFrameID,
 			"resourceType": resourceType,
 		}, cdpSessionID)
 	})

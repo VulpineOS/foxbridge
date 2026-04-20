@@ -26,6 +26,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			if info, ok := b.sessions.Get(msg.SessionID); ok {
 				frameID = info.FrameID
 			}
+			frameID = b.cdpFrameIDForSession(msg.SessionID, frameID)
 			jugglerSessionID := b.resolveSession(msg.SessionID)
 			b.latestCtxMu.RLock()
 			latestCtx := b.latestCtx[jugglerSessionID]
