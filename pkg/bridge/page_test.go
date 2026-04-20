@@ -597,6 +597,51 @@ func TestHandlePage_PrintToPDF(t *testing.T) {
 	}
 }
 
+func TestHandlePage_GetFrameTree_WaitsForSessionFrameState(t *testing.T) {
+	b, mb := newTestBridge()
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		b.sessions.Add(&cdp.SessionInfo{
+			SessionID: "page-s1",
+			FrameID:   "mainframe-1",
+			URL:       "https://example.com",
+			Type:      "page",
+		})
+	}()
+
+	msg := &cdp.Message{
+		ID:        1,
+		Method:    "Page.getFrameTree",
+		SessionID: "page-s1",
+	}
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var res struct {
+		FrameTree struct {
+			Frame struct {
+				ID  string `json:"id"`
+				URL string `json:"url"`
+			} `json:"frame"`
+		} `json:"frameTree"`
+	}
+	if err := json.Unmarshal(result, &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res.FrameTree.Frame.ID != "mainframe-1" {
+		t.Fatalf("frame id = %q, want mainframe-1", res.FrameTree.Frame.ID)
+	}
+	if res.FrameTree.Frame.URL != "https://example.com" {
+		t.Fatalf("frame url = %q, want https://example.com", res.FrameTree.Frame.URL)
+	}
+	if calls := mb.CallsForMethod("Accessibility.getFullAXTree"); len(calls) != 0 {
+		t.Fatalf("expected no AX fallback call, got %d", len(calls))
+	}
+}
+
 func TestHandlePage_SetExtraHTTPHeaders(t *testing.T) {
 	b, mb := newTestBridge()
 	b.sessions.Add(&cdp.SessionInfo{

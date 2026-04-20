@@ -224,13 +224,32 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return marshalResult(map[string]string{"data": ssResult.Data})
 
 	case "Page.getFrameTree":
-		// Look up the real frame ID from the session (stored from events)
+		// Look up the real frame ID from the session (stored from events).
+		// If the page session has just been created, give the normal frame/context
+		// events a brief chance to populate the session before falling back to the
+		// heavier AX-tree probe. This avoids racing Playwright's page bootstrap.
 		frameID := ""
 		pageURL := "about:blank"
-		if info, ok := b.sessions.Get(msg.SessionID); ok {
-			frameID = info.FrameID
-			if info.URL != "" {
-				pageURL = info.URL
+		refreshFrameState := func() {
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				if info.FrameID != "" {
+					frameID = info.FrameID
+				}
+				if info.URL != "" {
+					pageURL = info.URL
+				}
+			}
+		}
+		refreshFrameState()
+
+		if frameID == "" {
+			deadline := time.Now().Add(250 * time.Millisecond)
+			for time.Now().Before(deadline) {
+				refreshFrameState()
+				if frameID != "" {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 
@@ -245,11 +264,13 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				log.Printf("[page] getFrameTree: AX tree probe failed: %v", probeErr)
 			}
 			// After the call, check if frameId was stored from triggered events
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.FrameID != "" {
-				frameID = info.FrameID
+			refreshFrameState()
+			if frameID != "" {
 				log.Printf("[page] getFrameTree: discovered frameID=%s via AX tree probe", frameID)
 			}
 		}
+
+		refreshFrameState()
 
 		// Last resort: if still no frameID, fall back to a placeholder
 		if frameID == "" {
