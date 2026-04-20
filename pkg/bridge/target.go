@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/VulpineOS/foxbridge/pkg/cdp"
 	"github.com/google/uuid"
@@ -105,6 +106,12 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		targetID := pageResult.TargetID
 		if targetID == "" {
 			targetID = uuid.New().String()
+		}
+
+		if params.URL != "" && params.URL != "about:blank" {
+			if err := b.navigateNewTarget(targetID, params.URL); err != nil {
+				return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			}
 		}
 
 		// Return the PAGE targetId (not the tab).
@@ -312,6 +319,24 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
+}
+
+func (b *Bridge) navigateNewTarget(targetID, url string) error {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		info, ok := b.sessions.GetByTarget(targetID)
+		if ok {
+			_, err := b.callJuggler(info.SessionID, "Page.navigate", map[string]interface{}{
+				"url": url,
+			})
+			if err != nil {
+				return fmt.Errorf("navigate new target %s to %s: %w", targetID, url, err)
+			}
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("target %s not ready for initial navigation to %s", targetID, url)
 }
 
 func marshalResult(v interface{}) (json.RawMessage, *cdp.Error) {

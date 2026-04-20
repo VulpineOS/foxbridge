@@ -78,6 +78,55 @@ func TestHandleTarget_CreateTarget_StripsSyntheticDefaultContext(t *testing.T) {
 	}
 }
 
+func TestHandleTarget_CreateTargetNavigatesInitialURL(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Browser.newPage", json.RawMessage(`{"targetId":"page-1"}`), nil)
+	mb.SetResponse("jug-page-1", "Page.navigate", json.RawMessage(`{}`), nil)
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		b.sessions.Add(&cdp.SessionInfo{
+			SessionID:        "cdp-page-1",
+			JugglerSessionID: "jug-page-1",
+			TargetID:         "page-1",
+			BrowserContextID: "ctx-1",
+			Type:             "page",
+		})
+	}()
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Target.createTarget",
+		Params: json.RawMessage(`{"url":"https://example.com"}`),
+	}
+	result, cdpErr := b.handleTarget(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+
+	var res map[string]string
+	json.Unmarshal(result, &res)
+	if res["targetId"] != "page-1" {
+		t.Fatalf("targetId = %q, want page-1", res["targetId"])
+	}
+
+	calls := mb.CallsForMethod("Page.navigate")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Page.navigate call, got %d", len(calls))
+	}
+	if calls[0].SessionID != "jug-page-1" {
+		t.Fatalf("navigate session = %q, want jug-page-1", calls[0].SessionID)
+	}
+
+	var params map[string]interface{}
+	if err := json.Unmarshal(calls[0].Params, &params); err != nil {
+		t.Fatalf("unmarshal navigate params: %v", err)
+	}
+	if got := params["url"]; got != "https://example.com" {
+		t.Fatalf("navigate url = %v, want https://example.com", got)
+	}
+}
+
 func TestHandleTarget_SetAutoAttach_BrowserLevel(t *testing.T) {
 	b, _ := newTestBridge()
 
