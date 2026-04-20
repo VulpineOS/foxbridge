@@ -193,6 +193,13 @@ func TestSetupEventSubscriptions_NavigationCommitted(t *testing.T) {
 		TargetID:         "t1",
 		URL:              "about:blank",
 	})
+	b.autoAttach.mu.Lock()
+	b.autoAttach.pairs["jug-s1"] = &targetPair{
+		pageSessionID: "cdp-s1",
+		pageTargetID:  "t1",
+		url:           "about:blank",
+	}
+	b.autoAttach.mu.Unlock()
 
 	mb.mu.Lock()
 	handlers := mb.handlers["Page.navigationCommitted"]
@@ -212,6 +219,15 @@ func TestSetupEventSubscriptions_NavigationCommitted(t *testing.T) {
 	}
 	if info.URL != "https://example.com" {
 		t.Errorf("URL = %q, want https://example.com", info.URL)
+	}
+	b.autoAttach.mu.Lock()
+	pair := b.autoAttach.pairs["jug-s1"]
+	b.autoAttach.mu.Unlock()
+	if pair == nil {
+		t.Fatal("target pair not found")
+	}
+	if pair.url != "https://example.com" {
+		t.Errorf("pair URL = %q, want https://example.com", pair.url)
 	}
 }
 

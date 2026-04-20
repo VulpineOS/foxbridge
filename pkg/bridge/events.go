@@ -265,6 +265,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
 			info.URL = ev.URL
 		}
+		b.autoAttach.mu.Lock()
+		if pair, ok := b.autoAttach.pairs[jugglerSessionID]; ok {
+			pair.url = ev.URL
+		}
+		b.autoAttach.mu.Unlock()
 
 		// Use the Juggler navigationId as loaderId for consistency
 		loaderId := ev.NavigationID
