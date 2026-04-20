@@ -519,6 +519,29 @@ func TestHandleTarget_GetTargetInfo_Found(t *testing.T) {
 	}
 }
 
+func TestHandleTarget_GetTargetInfo_DefaultBrowserTarget(t *testing.T) {
+	b, _ := newTestBridge()
+	msg := &cdp.Message{ID: 1, Method: "Target.getTargetInfo", Params: json.RawMessage(`{}`)}
+	result, cdpErr := b.handleTarget(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+
+	var res struct {
+		TargetInfo struct {
+			TargetID string `json:"targetId"`
+			Type     string `json:"type"`
+		} `json:"targetInfo"`
+	}
+	json.Unmarshal(result, &res)
+	if res.TargetInfo.TargetID != "foxbridge-browser" {
+		t.Errorf("targetId = %q, want foxbridge-browser", res.TargetInfo.TargetID)
+	}
+	if res.TargetInfo.Type != "browser" {
+		t.Errorf("type = %q, want browser", res.TargetInfo.Type)
+	}
+}
+
 func TestHandleTarget_GetTargetInfo_NotFound(t *testing.T) {
 	b, _ := newTestBridge()
 	msg := &cdp.Message{ID: 1, Method: "Target.getTargetInfo", Params: json.RawMessage(`{"targetId":"nonexistent"}`)}

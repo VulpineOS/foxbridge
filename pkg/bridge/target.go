@@ -302,6 +302,18 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			TargetID string `json:"targetId"`
 		}
 		json.Unmarshal(msg.Params, &params)
+		if params.TargetID == "" {
+			return marshalResult(map[string]interface{}{
+				"targetInfo": map[string]interface{}{
+					"targetId":        "foxbridge-browser",
+					"type":            "browser",
+					"title":           "",
+					"url":             "",
+					"attached":        true,
+					"canAccessOpener": false,
+				},
+			})
+		}
 		if info, ok := b.sessions.GetByTarget(params.TargetID); ok {
 			return marshalResult(map[string]interface{}{
 				"targetInfo": map[string]interface{}{
