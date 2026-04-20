@@ -207,6 +207,42 @@ func TestHandleRuntime_CallFunctionOn_ExecutionContextIDMapping(t *testing.T) {
 	}
 }
 
+func TestHandleRuntime_CallFunctionOn_ObjectIDPreservesOriginalArgs(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Runtime.callFunctionOn",
+		Params: json.RawMessage(`{"functionDeclaration":"(utilityScript, ...args) => utilityScript.evaluate(...args)","objectId":"obj-1","arguments":[{"objectId":"obj-1"},{"value":true},{"value":true},{"value":"() => document.title"},{"value":1},{"value":{"v":"undefined"}}],"returnByValue":true,"awaitPromise":true}`),
+	}
+	_, cdpErr := b.handleRuntime(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+
+	last, _ := mb.LastCall()
+	var p struct {
+		FunctionDeclaration string           `json:"functionDeclaration"`
+		Args                []map[string]any `json:"args"`
+	}
+	if err := json.Unmarshal(last.Params, &p); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if !strings.Contains(p.FunctionDeclaration, "return fn.call(__this__, ...args);") {
+		t.Fatalf("functionDeclaration = %q, want call(__this__, ...args) wrapper", p.FunctionDeclaration)
+	}
+	if len(p.Args) != 7 {
+		t.Fatalf("args len = %d, want 7", len(p.Args))
+	}
+	if p.Args[0]["objectId"] != "obj-1" {
+		t.Fatalf("args[0] = %v, want synthetic this handle", p.Args[0])
+	}
+	if p.Args[1]["objectId"] != "obj-1" {
+		t.Fatalf("args[1] = %v, want original first argument handle", p.Args[1])
+	}
+}
+
 func TestHandleRuntime_ReleaseObject(t *testing.T) {
 	b, mb := newTestBridge()
 	msg := &cdp.Message{

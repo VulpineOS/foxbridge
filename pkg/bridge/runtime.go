@@ -338,8 +338,9 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			newArgs = append(newArgs, existingArgs...)
 			finalArgs = mustMarshal(newArgs)
 
-			// Wrap: pass the object as first arg
-			funcDecl = fmt.Sprintf(`function(__this__, ...args) { const fn = %s; if (fn.prototype) { return fn.call(__this__, ...args); } else { return fn(__this__, ...args); } }`, funcDecl)
+			// Juggler lacks CDP's objectId-as-this binding. Preserve the original
+			// argument list and only emulate the this-value on the wrapped call.
+			funcDecl = fmt.Sprintf(`function(__this__, ...args) { const fn = %s; return fn.call(__this__, ...args); }`, funcDecl)
 		}
 
 		// Build Juggler params AFTER all funcDecl transformations
