@@ -267,6 +267,14 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 
 		return marshalResult(map[string]string{"sessionId": sessionID})
 
+	case "Target.attachToBrowserTarget":
+		sessionID := uuid.New().String()
+		b.sessions.Add(&cdp.SessionInfo{
+			SessionID: sessionID,
+			Type:      "browser",
+		})
+		return marshalResult(map[string]string{"sessionId": sessionID})
+
 	case "Target.activateTarget":
 		return json.RawMessage(`{}`), nil
 

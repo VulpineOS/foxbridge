@@ -171,8 +171,8 @@ func TestHandleTarget_SetAutoAttach_BrowserLevel(t *testing.T) {
 	if pendingLen != 0 {
 		t.Errorf("pending = %d, want 0 (should be drained)", pendingLen)
 	}
-	if !pair.pageAttached {
-		t.Error("expected browser-level auto-attach to emit the page attachment")
+	if !pair.pageAttachedRoot {
+		t.Error("expected browser-level auto-attach to emit the root page attachment")
 	}
 }
 
@@ -427,6 +427,37 @@ func TestHandleTarget_AttachToTarget_New(t *testing.T) {
 	}
 	if info.Type != "page" {
 		t.Errorf("type = %q, want page", info.Type)
+	}
+}
+
+func TestHandleTarget_AttachToBrowserTarget(t *testing.T) {
+	b, _ := newTestBridge()
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Target.attachToBrowserTarget",
+		Params: json.RawMessage(`{}`),
+	}
+	result, cdpErr := b.handleTarget(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+
+	var res map[string]string
+	json.Unmarshal(result, &res)
+	if res["sessionId"] == "" {
+		t.Fatal("expected non-empty sessionId")
+	}
+
+	info, ok := b.sessions.Get(res["sessionId"])
+	if !ok {
+		t.Fatal("browser session was not registered")
+	}
+	if info.Type != "browser" {
+		t.Fatalf("type = %q, want browser", info.Type)
+	}
+	if got := b.resolveSession(res["sessionId"]); got != "" {
+		t.Fatalf("resolveSession(browserSession) = %q, want empty root session", got)
 	}
 }
 

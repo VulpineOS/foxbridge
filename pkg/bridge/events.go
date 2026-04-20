@@ -13,13 +13,14 @@ import (
 
 // targetPair holds the tab+page CDP session IDs for a Juggler target.
 type targetPair struct {
-	tabSessionID  string
-	tabTargetID   string
-	pageSessionID string
-	pageTargetID  string
-	browserCtxID  string
-	url           string
-	pageAttached  bool
+	tabSessionID     string
+	tabTargetID      string
+	pageSessionID    string
+	pageTargetID     string
+	browserCtxID     string
+	url              string
+	pageAttachedRoot bool
+	pageAttachedTab  bool
 }
 
 // autoAttachState tracks auto-attach configuration and pending targets.
@@ -983,17 +984,32 @@ func (b *Bridge) emitTabAttach(pair *targetPair) {
 
 func (b *Bridge) emitAutoAttachPair(pair *targetPair) {
 	b.emitTabAttach(pair)
-	b.emitPageAttach(pair)
+	b.emitPageAttachOnSession(pair, "")
 }
 
-// emitPageAttach emits the page-level attachment on a tab session.
+// emitPageAttach emits the page-level attachment on the provided parent session.
 func (b *Bridge) emitPageAttach(pair *targetPair) {
+	b.emitPageAttachOnSession(pair, pair.tabSessionID)
+}
+
+// emitPageAttachOnSession emits the page-level attachment on the provided parent session.
+// Browser-level auto-attach should emit page attachments on the root session so Playwright
+// discovers real pages instead of only seeing a synthetic tab wrapper.
+func (b *Bridge) emitPageAttachOnSession(pair *targetPair, parentSessionID string) {
 	b.autoAttach.mu.Lock()
-	if pair.pageAttached {
-		b.autoAttach.mu.Unlock()
-		return
+	if parentSessionID == "" {
+		if pair.pageAttachedRoot {
+			b.autoAttach.mu.Unlock()
+			return
+		}
+		pair.pageAttachedRoot = true
+	} else {
+		if pair.pageAttachedTab {
+			b.autoAttach.mu.Unlock()
+			return
+		}
+		pair.pageAttachedTab = true
 	}
-	pair.pageAttached = true
 	b.autoAttach.mu.Unlock()
 
 	url := pair.url
@@ -1012,7 +1028,7 @@ func (b *Bridge) emitPageAttach(pair *targetPair) {
 			"browserContextId": pair.browserCtxID,
 		},
 		"waitingForDebugger": true,
-	}, pair.tabSessionID)
+	}, parentSessionID)
 }
 
 // resolveCDPSession maps a Juggler sessionID to a CDP sessionID.
