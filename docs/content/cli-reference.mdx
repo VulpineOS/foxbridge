@@ -9,6 +9,7 @@ description: "All foxbridge CLI flags: --binary, --port, --backend, --headless, 
 
 ```bash
 foxbridge [flags]
+foxbridge doctor [--format text|json]
 ```
 
 ## Flags
@@ -23,6 +24,15 @@ foxbridge [flags]
 | `--backend` | string | `juggler` | Backend protocol: `juggler` or `bidi` |
 | `--bidi-url` | string | (none) | BiDi WebSocket URL (skip browser launch) |
 | `--bidi-port` | int | `9223` | Port for BiDi WebSocket when auto-launching |
+
+## Doctor Command
+
+```bash
+foxbridge doctor
+foxbridge doctor --format json
+```
+
+Prints a protocol coverage report against the committed upstream CDP snapshot bundled with foxbridge. This is the most current way to answer which methods are implemented, stubbed, missing, or exposed as foxbridge extensions.
 
 ## Examples
 

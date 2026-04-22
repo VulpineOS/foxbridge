@@ -19,6 +19,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "doctor" {
+		os.Exit(runDoctorCommand(os.Args[2:]))
+	}
+
 	port := flag.Int("port", 9222, "CDP WebSocket port")
 	socket := flag.String("socket", "", "Unix-domain socket path for the CDP HTTP/WebSocket server")
 	binary := flag.String("binary", "", "Firefox/Camoufox binary path")

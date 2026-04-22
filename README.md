@@ -63,6 +63,9 @@ foxbridge --backend bidi --bidi-url ws://localhost:9223/session
 # Serve CDP over a Unix domain socket
 foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock
 
+# Print a protocol coverage report
+foxbridge doctor
+
 # Now connect any CDP tool:
 # Puppeteer: puppeteer.connect({ browserWSEndpoint: 'ws://localhost:9222' })
 ```
@@ -75,6 +78,15 @@ If you are using foxbridge with VulpineOS-specific `Page.*` extensions,
 see the passthrough guide in the docs: `VulpineOS Methods`.
 
 ## CDP Domain Coverage
+
+Need a current protocol snapshot instead of the hand-maintained tables below?
+
+```bash
+foxbridge doctor
+foxbridge doctor --format json
+```
+
+The doctor command compares the current foxbridge bridge surface against a committed snapshot of the upstream Chrome DevTools Protocol definition and reports implemented, stubbed, missing, and extension methods.
 
 | Domain | Methods | Status |
 |--------|---------|--------|
