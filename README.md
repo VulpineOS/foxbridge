@@ -66,6 +66,12 @@ foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock
 # Enable deterministic runtime shims for low-flake tests
 foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --deterministic-seed 42
 
+# Record a live CDP session to JSONL
+foxbridge --binary /path/to/camoufox --record ./trace.jsonl
+
+# Replay a captured CDP session without launching Firefox
+foxbridge replay --recording ./trace.jsonl
+
 # Print a protocol coverage report
 foxbridge doctor
 
@@ -166,12 +172,15 @@ No separate process needed — VulpineOS imports foxbridge as a Go library and s
 | `--backend` | juggler | Backend: `juggler` or `bidi` |
 | `--bidi-url` | — | Connect to existing BiDi endpoint |
 | `--bidi-port` | 9223 | BiDi port when auto-launching Firefox |
+| `--record` | — | Path to write a JSONL CDP wire capture |
 | `--deterministic-time` | 0 | Base epoch in milliseconds for deterministic `Date.now` / `performance.now` injection |
 | `--deterministic-seed` | 0 | Seed for deterministic `Math.random` / `crypto.getRandomValues` injection |
 
 When `--socket` is set, foxbridge listens on a Unix domain socket instead of binding a TCP port. Discovery endpoints are still available over HTTP, and the browser-level WebSocket URL remains `/devtools/browser/foxbridge`; clients must dial that URL using their library's Unix-socket transport or `socketPath` option.
 
 When either deterministic flag is set, foxbridge injects a deterministic runtime prelude into page sessions so `Date.now`, `performance.now`, `Math.random`, and `crypto.getRandomValues` become repeatable across runs.
+
+When `--record` is set, foxbridge writes every inbound and outbound CDP frame for the active session to JSONL. The resulting file can be replayed later with `foxbridge replay --recording /path/to/trace.jsonl` to reproduce client traffic without launching a browser.
 
 ## Testing
 

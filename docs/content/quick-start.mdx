@@ -42,6 +42,15 @@ foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --determ
 
 This injects deterministic `Date.now`, `performance.now`, `Math.random`, and `crypto.getRandomValues` shims into page sessions so screenshot and snapshot tests can run with lower flake.
 
+### Record and Replay a CDP Session
+
+```bash
+foxbridge --binary /path/to/camoufox --record ./trace.jsonl --headless
+foxbridge replay --recording ./trace.jsonl --port 9222
+```
+
+Use this when you need to capture a real client session once, then replay the same browser-level traffic later for debugging or regression tests without launching a browser.
+
 ### Connect with Puppeteer
 
 ```javascript

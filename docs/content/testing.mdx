@@ -31,6 +31,7 @@ Run a specific package:
 ```bash
 go test ./pkg/bridge/
 go test ./pkg/cdp/
+go test ./pkg/recording/
 ```
 
 For lower-flake screenshot and snapshot captures, start foxbridge with deterministic runtime injection:
@@ -38,6 +39,15 @@ For lower-flake screenshot and snapshot captures, start foxbridge with determini
 ```bash
 foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --deterministic-seed 42 --headless
 ```
+
+For reproducible protocol debugging, capture a live session and replay it later without launching Firefox:
+
+```bash
+foxbridge --binary /path/to/camoufox --record ./trace.jsonl --headless
+foxbridge replay --recording ./trace.jsonl --port 9222
+```
+
+The recording format is JSONL, one inbound or outbound CDP frame per line. The replay harness is intended for browser-level single-session traces so client regressions can be reproduced against a stable fixture.
 
 ## Test Files
 
@@ -59,6 +69,8 @@ foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --determ
 | `pkg/bridge/testutil_test.go` | Shared test helpers and mock backend |
 | `pkg/cdp/session_test.go` | Session manager CRUD |
 | `pkg/cdp/server_test.go` | WebSocket server and HTTP endpoints |
+| `pkg/recording/capture_test.go` | JSONL capture and large-frame loading |
+| `pkg/recording/replay_test.go` | Browser-level CDP replay ordering |
 
 ## Integration Tests
 

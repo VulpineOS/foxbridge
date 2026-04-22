@@ -16,15 +16,20 @@ import (
 	"github.com/VulpineOS/foxbridge/pkg/bridge"
 	"github.com/VulpineOS/foxbridge/pkg/cdp"
 	"github.com/VulpineOS/foxbridge/pkg/firefox"
+	"github.com/VulpineOS/foxbridge/pkg/recording"
 )
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "doctor" {
 		os.Exit(runDoctorCommand(os.Args[2:]))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "replay" {
+		os.Exit(runReplayCommand(os.Args[2:]))
+	}
 
 	port := flag.Int("port", 9222, "CDP WebSocket port")
 	socket := flag.String("socket", "", "Unix-domain socket path for the CDP HTTP/WebSocket server")
+	recordPath := flag.String("record", "", "Path to write a CDP wire recording as JSONL")
 	binary := flag.String("binary", "", "Firefox/Camoufox binary path")
 	headless := flag.Bool("headless", false, "Run headless")
 	profile := flag.String("profile", "", "Firefox profile directory")
@@ -115,6 +120,14 @@ func main() {
 	if *socket != "" {
 		server.SetUnixSocket(*socket)
 	}
+	if *recordPath != "" {
+		recorder, err := recording.NewRecorder(*recordPath)
+		if err != nil {
+			log.Fatalf("failed to create recorder: %v", err)
+		}
+		defer recorder.Close()
+		server.SetRecorder(recorder)
+	}
 
 	// Create bridge and set up event subscriptions BEFORE enabling Browser.
 	b = bridge.New(be, sessions, server, *backendMode == "bidi")
@@ -145,6 +158,9 @@ func main() {
 	log.Printf("foxbridge CDP proxy listening on %s (backend: %s)", server.ListenDescription(), *backendMode)
 	if *socket != "" {
 		log.Printf("foxbridge unix-socket clients should use socketPath=%s with %s", *socket, server.BrowserWSURL())
+	}
+	if *recordPath != "" {
+		log.Printf("foxbridge recording CDP traffic to %s", *recordPath)
 	}
 	if *deterministicTime != 0 || *deterministicSeed != 0 {
 		log.Printf("foxbridge deterministic runtime enabled (time=%d seed=%d)", *deterministicTime, *deterministicSeed)

@@ -10,6 +10,7 @@ description: "All foxbridge CLI flags: --binary, --port, --backend, --headless, 
 ```bash
 foxbridge [flags]
 foxbridge doctor [--format text|json]
+foxbridge replay --recording /path/to/trace.jsonl [--port 9222 | --socket /tmp/foxbridge.sock]
 ```
 
 ## Flags
@@ -24,6 +25,7 @@ foxbridge doctor [--format text|json]
 | `--backend` | string | `juggler` | Backend protocol: `juggler` or `bidi` |
 | `--bidi-url` | string | (none) | BiDi WebSocket URL (skip browser launch) |
 | `--bidi-port` | int | `9223` | Port for BiDi WebSocket when auto-launching |
+| `--record` | string | (none) | Path to write a JSONL CDP wire capture |
 | `--deterministic-time` | int | `0` | Base epoch in milliseconds for deterministic `Date.now` / `performance.now` injection |
 | `--deterministic-seed` | uint | `0` | Seed for deterministic `Math.random` / `crypto.getRandomValues` injection |
 
@@ -78,6 +80,22 @@ foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --determ
 
 Injects a deterministic runtime prelude into page sessions so `Date.now`, `performance.now`, `Math.random`, and `crypto.getRandomValues` return repeatable values. This is useful for low-flake screenshot, snapshot, and fixture-capture workflows.
 
+### Record a Live Session
+
+```bash
+foxbridge --binary /path/to/camoufox --record ./trace.jsonl --headless
+```
+
+Writes each inbound and outbound CDP frame to a JSONL file. This is intended for bug reproduction, fixture capture, and regression tests against a known client session.
+
+### Replay a Captured Session
+
+```bash
+foxbridge replay --recording ./trace.jsonl --port 9222
+```
+
+Starts a lightweight replay server that serves the captured discovery endpoints and replays the recorded browser-level CDP exchange. No browser process is launched.
+
 ### Custom Profile
 
 ```bash
@@ -99,8 +117,9 @@ When `--binary` is not specified, foxbridge searches for browser binaries in the
 2. Launch browser process (or connect to `--bidi-url`)
 3. Enable `Browser` domain with `attachToDefaultContext: true`
 4. Set up event subscriptions (Juggler/BiDi events to CDP)
-5. Start CDP WebSocket server on `--port`
-6. Wait for SIGINT/SIGTERM or browser exit
+5. Optionally enable JSONL wire recording if `--record` is set
+6. Start CDP WebSocket server on `--port`
+7. Wait for SIGINT/SIGTERM or browser exit
 
 ## CDP Endpoints
 

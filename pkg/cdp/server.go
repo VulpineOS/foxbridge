@@ -16,10 +16,16 @@ import (
 // MessageHandler is called for each incoming CDP message.
 type MessageHandler func(conn *Connection, msg *Message)
 
+// FrameRecorder captures inbound and outbound CDP wire messages.
+type FrameRecorder interface {
+	Record(direction string, msg *Message) error
+}
+
 // Connection represents a single CDP WebSocket connection.
 type Connection struct {
-	ws      *websocket.Conn
-	writeMu sync.Mutex
+	ws       *websocket.Conn
+	writeMu  sync.Mutex
+	recorder FrameRecorder
 }
 
 // Send sends a CDP message to the client.
@@ -30,7 +36,15 @@ func (c *Connection) Send(msg *Message) error {
 	}
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	return c.ws.WriteMessage(websocket.TextMessage, data)
+	if err := c.ws.WriteMessage(websocket.TextMessage, data); err != nil {
+		return err
+	}
+	if c.recorder != nil {
+		if err := c.recorder.Record("out", msg); err != nil {
+			log.Printf("[record] outbound record error: %v", err)
+		}
+	}
+	return nil
 }
 
 // Server is the CDP WebSocket server.
@@ -40,6 +54,7 @@ type Server struct {
 	host     string
 	port     int
 	socket   string
+	recorder FrameRecorder
 	conns    map[*Connection]struct{}
 	connsMu  sync.Mutex
 	sessions *SessionManager
@@ -57,6 +72,11 @@ func NewServer(port int, handler MessageHandler, sessions *SessionManager) *Serv
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 	}
+}
+
+// SetRecorder configures an optional wire recorder for inbound and outbound CDP frames.
+func (s *Server) SetRecorder(recorder FrameRecorder) {
+	s.recorder = recorder
 }
 
 // SetHost overrides the TCP host used when serving over a network port.
@@ -214,7 +234,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := &Connection{ws: ws}
+	conn := &Connection{ws: ws, recorder: s.recorder}
 	s.connsMu.Lock()
 	s.conns[conn] = struct{}{}
 	s.connsMu.Unlock()
@@ -236,6 +256,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			log.Printf("invalid CDP message: %v", err)
 			continue
+		}
+		if s.recorder != nil {
+			if err := s.recorder.Record("in", &msg); err != nil {
+				log.Printf("[record] inbound record error: %v", err)
+			}
 		}
 
 		log.Printf("[cdp-in] #%d %s (session=%s)", msg.ID, msg.Method, msg.SessionID)
