@@ -27,21 +27,19 @@ Foxbridge runs as a proxy between your CDP tool and Firefox:
 4. Firefox executes the command
 5. Foxbridge translates the response back to CDP format
 
-The translation covers **13 CDP domains** with full method and event mapping:
+Coverage is tracked by `foxbridge doctor`, not by a fixed "fully implemented
+domains" count. Current `main` snapshot:
 
-- **Target** — session management, browser contexts
-- **Page** — navigation, screenshots, PDF, lifecycle events
-- **Runtime** — JavaScript evaluation, function calls, object inspection
-- **Input** — mouse, keyboard, touch events
-- **Network** — cookies, user agent, request headers
-- **Emulation** — viewport, geolocation, timezone, locale
-- **DOM** — querySelector, getDocument, describeNode
-- **Fetch** — request interception (block, modify, fulfill)
-- **Performance** — page timing metrics
-- **Accessibility** — full AX tree
-- **IO** — PDF stream reading
-- **Console** — console.log event forwarding
-- **Browser** — version info, context management
+- **662** upstream CDP methods in the bundled protocol snapshot
+- **89** implemented methods
+- **203** stubbed compatibility methods
+- **370** missing methods
+- **8** foxbridge-only extensions
+
+The strongest covered areas today are `DOM`, `Page`, `Target`, `Network`,
+`Fetch`, `Runtime`, `Input`, `Emulation`, `IO`, and `Performance`. For the
+exact live method list, use [CDP Domain Coverage](/cdp-coverage) or run
+`foxbridge doctor --format json`.
 
 ## Two Backends
 

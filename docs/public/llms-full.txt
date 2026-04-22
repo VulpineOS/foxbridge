@@ -736,7 +736,7 @@ Camoufox via foxbridge: undetectable (BrowserForge fingerprints), per-context fi
 
 | Category | Tests | Description |
 |----------|-------|-------------|
-| Go unit tests | 227 | Bridge translation, session management, CDP server |
+| Go unit tests | 379 | Bridge translation, session management, CDP server |
 | Juggler integration | 74/74 | End-to-end with Camoufox 146 |
 | BiDi integration | 62/62 | End-to-end with Firefox 148 |
 
