@@ -6,18 +6,23 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 // serverForTest creates an http.ServeMux with the Server's HTTP handlers wired up.
 // This avoids starting a real listener while testing the JSON endpoints.
 func serverForTest(sessions *SessionManager) *http.ServeMux {
 	s := NewServer(9222, nil, sessions)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/json/version", s.handleVersion)
-	mux.HandleFunc("/json", s.handleList)
-	mux.HandleFunc("/json/list", s.handleList)
-	return mux
+	return s.mux()
+}
+
+func serverForSocketTest(sessions *SessionManager, socketPath string) *http.ServeMux {
+	s := NewServer(9222, nil, sessions)
+	s.SetUnixSocket(socketPath)
+	return s.mux()
 }
 
 func TestServer_JSONVersion(t *testing.T) {
@@ -253,5 +258,92 @@ func TestServer_JSONVersion_Fields(t *testing.T) {
 	expected := fmt.Sprintf("ws://127.0.0.1:%d/devtools/browser/foxbridge", 9222)
 	if info["webSocketDebuggerUrl"] != expected {
 		t.Errorf("webSocketDebuggerUrl = %q, want %q", info["webSocketDebuggerUrl"], expected)
+	}
+}
+
+func TestServer_JSONVersion_UnixSocket(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "foxbridge.sock")
+	mux := serverForSocketTest(NewSessionManager(), socketPath)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/json/version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var info map[string]string
+	if err := json.Unmarshal(body, &info); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if info["webSocketDebuggerUrl"] != "ws://localhost/devtools/browser/foxbridge" {
+		t.Fatalf("webSocketDebuggerUrl = %q", info["webSocketDebuggerUrl"])
+	}
+	if info["socketPath"] != socketPath {
+		t.Fatalf("socketPath = %q, want %q", info["socketPath"], socketPath)
+	}
+}
+
+func TestServer_JSONList_UnixSocket(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "foxbridge.sock")
+	sm := NewSessionManager()
+	sm.Add(&SessionInfo{
+		SessionID: "s1",
+		TargetID:  "target-1",
+		URL:       "https://example.com",
+		Type:      "page",
+	})
+
+	mux := serverForSocketTest(sm, socketPath)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/json/list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var targets []map[string]interface{}
+	if err := json.Unmarshal(body, &targets); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets len = %d, want 1", len(targets))
+	}
+	if got := targets[0]["webSocketDebuggerUrl"]; got != "ws://localhost/devtools/page/target-1" {
+		t.Fatalf("webSocketDebuggerUrl = %v", got)
+	}
+	if got := targets[0]["socketPath"]; got != socketPath {
+		t.Fatalf("socketPath = %v, want %q", got, socketPath)
+	}
+}
+
+func TestServer_ListenUnixSocket_ReplacesStalePath(t *testing.T) {
+	socketPath := filepath.Join("/tmp", fmt.Sprintf("foxbridge-test-%d-%d.sock", os.Getpid(), time.Now().UnixNano()))
+	t.Cleanup(func() { _ = os.Remove(socketPath) })
+	if err := os.WriteFile(socketPath, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("write stale socket placeholder: %v", err)
+	}
+
+	s := NewServer(0, nil, nil)
+	s.SetUnixSocket(socketPath)
+
+	ln, err := s.listen()
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	info, err := os.Stat(socketPath)
+	if err != nil {
+		t.Fatalf("stat socket: %v", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("mode = %v, want unix socket", info.Mode())
 	}
 }

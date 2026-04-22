@@ -16,6 +16,7 @@ foxbridge [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--port` | int | `9222` | CDP WebSocket server port |
+| `--socket` | string | (none) | Unix-domain socket path for the CDP HTTP/WebSocket server |
 | `--binary` | string | (auto-detect) | Path to Firefox or Camoufox binary |
 | `--headless` | bool | `false` | Run browser in headless mode |
 | `--profile` | string | (temporary) | Firefox profile directory |
@@ -48,6 +49,14 @@ foxbridge --backend bidi --bidi-url ws://localhost:9224/session/abc --port 9222
 ```
 
 Skips browser launch entirely. Connects to an already-running Firefox BiDi endpoint.
+
+### Serve over a Unix Socket
+
+```bash
+foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock --headless
+```
+
+Skips TCP port allocation and serves CDP discovery plus WebSocket traffic through a Unix domain socket. Clients should keep using the normal browser WebSocket path, for example `ws://localhost/devtools/browser/foxbridge`, but must dial it with their library's Unix-socket transport or `socketPath` option.
 
 ### Custom Profile
 
@@ -82,6 +91,8 @@ Once running, foxbridge exposes standard Chrome DevTools Protocol HTTP endpoints
 | `http://localhost:9222/json/version` | Browser version info |
 | `http://localhost:9222/json/list` | Open targets/tabs |
 | `ws://localhost:9222/devtools/browser/foxbridge` | Browser-level WebSocket |
+
+In Unix-socket mode, the same HTTP paths and WebSocket paths are exposed, but the connection rides over the configured socket path instead of a TCP port.
 
 ---
 

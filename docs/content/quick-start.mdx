@@ -25,6 +25,15 @@ foxbridge --binary /path/to/camoufox --port 9222 --headless
 foxbridge --backend bidi --binary /path/to/firefox --port 9222 --bidi-port 9224 --headless
 ```
 
+### With a Unix Socket
+
+```bash
+foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock --headless
+curl --unix-socket /tmp/foxbridge.sock http://localhost/json/version
+```
+
+This avoids allocating a local TCP port. HTTP discovery still works through the socket, and WebSocket clients should connect to the normal foxbridge path using their library's Unix-socket transport support.
+
 ### Connect with Puppeteer
 
 ```javascript

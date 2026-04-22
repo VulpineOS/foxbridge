@@ -2,9 +2,12 @@ package cdp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -34,7 +37,9 @@ func (c *Connection) Send(msg *Message) error {
 type Server struct {
 	handler  MessageHandler
 	upgrader websocket.Upgrader
+	host     string
 	port     int
+	socket   string
 	conns    map[*Connection]struct{}
 	connsMu  sync.Mutex
 	sessions *SessionManager
@@ -44,6 +49,7 @@ type Server struct {
 func NewServer(port int, handler MessageHandler, sessions *SessionManager) *Server {
 	return &Server{
 		handler:  handler,
+		host:     "127.0.0.1",
 		port:     port,
 		sessions: sessions,
 		conns:    make(map[*Connection]struct{}),
@@ -53,21 +59,87 @@ func NewServer(port int, handler MessageHandler, sessions *SessionManager) *Serv
 	}
 }
 
-// Start begins listening for WebSocket connections.
-func (s *Server) Start() error {
-	mux := http.NewServeMux()
+// SetHost overrides the TCP host used when serving over a network port.
+func (s *Server) SetHost(host string) {
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	s.host = host
+}
 
-	// CDP discovery endpoint
+// SetUnixSocket configures the server to listen on a Unix domain socket.
+func (s *Server) SetUnixSocket(path string) {
+	s.socket = path
+}
+
+// ListenDescription returns the active listener target for logs and diagnostics.
+func (s *Server) ListenDescription() string {
+	if s.socket != "" {
+		return "unix://" + s.socket
+	}
+	return fmt.Sprintf("%s:%d", s.host, s.port)
+}
+
+// BrowserWSURL returns the browser-level WebSocket URL exposed by discovery endpoints.
+func (s *Server) BrowserWSURL() string {
+	return s.discoveryBaseURL() + "/devtools/browser/foxbridge"
+}
+
+func (s *Server) targetWSURL(targetID string) string {
+	return s.discoveryBaseURL() + "/devtools/page/" + targetID
+}
+
+func (s *Server) discoveryBaseURL() string {
+	if s.socket != "" {
+		return "ws://localhost"
+	}
+	return fmt.Sprintf("ws://%s:%d", s.host, s.port)
+}
+
+func (s *Server) listen() (net.Listener, error) {
+	if s.socket != "" {
+		if err := os.Remove(s.socket); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("remove stale unix socket: %w", err)
+		}
+		ln, err := net.Listen("unix", s.socket)
+		if err != nil {
+			return nil, fmt.Errorf("listen unix %s: %w", s.socket, err)
+		}
+		if err := os.Chmod(s.socket, 0o600); err != nil {
+			ln.Close()
+			return nil, fmt.Errorf("chmod unix socket: %w", err)
+		}
+		return ln, nil
+	}
+	addr := fmt.Sprintf("%s:%d", s.host, s.port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen tcp %s: %w", addr, err)
+	}
+	return ln, nil
+}
+
+func (s *Server) mux() *http.ServeMux {
+	mux := http.NewServeMux()
 	mux.HandleFunc("/json/version", s.handleVersion)
 	mux.HandleFunc("/json", s.handleList)
 	mux.HandleFunc("/json/list", s.handleList)
 	mux.HandleFunc("/devtools/browser/", s.handleWS)
-	// Also accept root path for convenience
 	mux.HandleFunc("/", s.handleWS)
+	return mux
+}
 
-	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
-	log.Printf("foxbridge CDP server listening on %s", addr)
-	return http.ListenAndServe(addr, mux)
+// Start begins listening for WebSocket connections.
+func (s *Server) Start() error {
+	ln, err := s.listen()
+	if err != nil {
+		return err
+	}
+	if s.socket != "" {
+		defer os.Remove(s.socket)
+	}
+	log.Printf("foxbridge CDP server listening on %s", s.ListenDescription())
+	return http.Serve(ln, s.mux())
 }
 
 // Broadcast sends a CDP message to all connected clients.
@@ -93,7 +165,10 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		"Browser":              "foxbridge/1.0",
 		"Protocol-Version":     "1.3",
 		"User-Agent":           "foxbridge",
-		"webSocketDebuggerUrl": fmt.Sprintf("ws://127.0.0.1:%d/devtools/browser/foxbridge", s.port),
+		"webSocketDebuggerUrl": s.BrowserWSURL(),
+	}
+	if s.socket != "" {
+		info["socketPath"] = s.socket
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(info)
@@ -120,8 +195,11 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 			"title":                info.Title,
 			"url":                  url,
 			"devtoolsFrontendUrl":  "",
-			"webSocketDebuggerUrl": fmt.Sprintf("ws://127.0.0.1:%d/devtools/page/%s", s.port, info.TargetID),
+			"webSocketDebuggerUrl": s.targetWSURL(info.TargetID),
 		})
+		if s.socket != "" {
+			targets[len(targets)-1]["socketPath"] = s.socket
+		}
 	}
 	if targets == nil {
 		targets = []map[string]interface{}{}

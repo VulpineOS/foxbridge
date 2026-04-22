@@ -60,6 +60,9 @@ foxbridge --backend bidi --binary /path/to/firefox --port 9222
 # Connect to existing BiDi endpoint
 foxbridge --backend bidi --bidi-url ws://localhost:9223/session
 
+# Serve CDP over a Unix domain socket
+foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock
+
 # Now connect any CDP tool:
 # Puppeteer: puppeteer.connect({ browserWSEndpoint: 'ws://localhost:9222' })
 ```
@@ -150,12 +153,15 @@ No separate process needed — VulpineOS imports foxbridge as a Go library and s
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | 9222 | CDP WebSocket port |
+| `--socket` | — | Unix-domain socket path for the CDP HTTP/WebSocket server |
 | `--binary` | auto-detect | Firefox/Camoufox binary path |
 | `--headless` | false | Run headless |
 | `--profile` | — | Firefox profile directory |
 | `--backend` | juggler | Backend: `juggler` or `bidi` |
 | `--bidi-url` | — | Connect to existing BiDi endpoint |
 | `--bidi-port` | 9223 | BiDi port when auto-launching Firefox |
+
+When `--socket` is set, foxbridge listens on a Unix domain socket instead of binding a TCP port. Discovery endpoints are still available over HTTP, and the browser-level WebSocket URL remains `/devtools/browser/foxbridge`; clients must dial that URL using their library's Unix-socket transport or `socketPath` option.
 
 ## Testing
 

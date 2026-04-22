@@ -20,6 +20,7 @@ import (
 
 func main() {
 	port := flag.Int("port", 9222, "CDP WebSocket port")
+	socket := flag.String("socket", "", "Unix-domain socket path for the CDP HTTP/WebSocket server")
 	binary := flag.String("binary", "", "Firefox/Camoufox binary path")
 	headless := flag.Bool("headless", false, "Run headless")
 	profile := flag.String("profile", "", "Firefox profile directory")
@@ -105,6 +106,9 @@ func main() {
 	server := cdp.NewServer(*port, func(conn *cdp.Connection, msg *cdp.Message) {
 		b.HandleMessage(conn, msg)
 	}, sessions)
+	if *socket != "" {
+		server.SetUnixSocket(*socket)
+	}
 
 	// Create bridge and set up event subscriptions BEFORE enabling Browser.
 	b = bridge.New(be, sessions, server, *backendMode == "bidi")
@@ -126,7 +130,10 @@ func main() {
 		}
 	}()
 
-	log.Printf("foxbridge CDP proxy listening on 127.0.0.1:%d (backend: %s)", *port, *backendMode)
+	log.Printf("foxbridge CDP proxy listening on %s (backend: %s)", server.ListenDescription(), *backendMode)
+	if *socket != "" {
+		log.Printf("foxbridge unix-socket clients should use socketPath=%s with %s", *socket, server.BrowserWSURL())
+	}
 
 	// Wait for signal or Firefox exit.
 	sig := make(chan os.Signal, 1)
