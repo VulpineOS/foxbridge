@@ -29,7 +29,7 @@ Set `"cdpUrl": "ws://127.0.0.1:9222"` in your openclaw.json. Foxbridge translate
 
 ## CDP Domain Coverage
 
-13 fully implemented domains: Target, Page, Runtime, Input, Network, Emulation, DOM, Fetch, Performance, Accessibility, IO, Console, Browser. 20 additional stub domains for compatibility.
+Current `foxbridge doctor` snapshot on `main`: 662 upstream CDP methods, 89 implemented, 203 stubbed compatibility methods, 370 missing, and 8 foxbridge-only extensions. Highest-coverage areas today are DOM, Page, Target, Network, Fetch, Runtime, Input, Emulation, IO, and Performance.
 
 74/74 Puppeteer tests passing on Camoufox (Juggler backend).
 62/62 Puppeteer tests passing on Firefox 148 (BiDi backend).

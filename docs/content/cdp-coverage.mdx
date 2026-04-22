@@ -1,21 +1,27 @@
 ---
-title: "CDP Domain Coverage — 13 Fully Implemented Chrome DevTools Domains"
-description: "Foxbridge implements 13 CDP domains: Target, Page, Runtime, Input, Network, Emulation, DOM, Fetch, Performance, Accessibility, IO, Console, Browser."
+title: "CDP Coverage Snapshot — Current Foxbridge Support"
+description: "Current foxbridge protocol coverage, keyed off the built-in doctor command and grouped by the major supported CDP areas."
 ---
 
-# CDP Domain Coverage — 13 Chrome DevTools Domains for Firefox
+# CDP Coverage Snapshot
 
-Full list of Chrome DevTools Protocol domains and methods implemented by foxbridge.
-
-For the live coverage snapshot generated from the current bridge surface, run:
+Use the live bridge snapshot first:
 
 ```bash
 foxbridge doctor
 ```
 
-Use the command output when you need exact implemented, stubbed, missing, and extension counts for the current build.
+Current `main` snapshot:
 
-## Fully Implemented Domains
+- `662` upstream CDP methods in the bundled protocol snapshot
+- `89` implemented methods
+- `203` stubbed compatibility methods
+- `370` missing methods
+- `8` foxbridge-only extensions
+
+The tables below describe the major domains foxbridge actively handles today. They are no longer a claim that foxbridge has “13 fully implemented CDP domains” across the full upstream protocol.
+
+## Major Supported Areas
 
 ### Target
 

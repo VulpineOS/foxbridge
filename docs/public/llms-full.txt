@@ -157,7 +157,9 @@ Two implementations:
 
 The bridge maintains concurrent-safe maps: ctxMap (CDP to Juggler context IDs), latestCtx (most recent context per session), isolatedWorlds (for re-emission after navigation), nodeObjects (backendNodeId to objectId), lastQuery (pending $eval selectors), loaderMap (loader IDs), lastDialog (dialog IDs), and pdfStreams (PDF IO handles).
 
-## CDP Domain Coverage — Full Method Reference
+## CDP Coverage Snapshot and Method Reference
+
+Authoritative current coverage comes from `foxbridge doctor`. On `main`, the bundled protocol snapshot reports 662 upstream methods, 89 implemented methods, 203 stubbed compatibility methods, 370 missing methods, and 8 foxbridge-only extensions. The grouped notes below describe the major supported areas and compatibility shims; they are not a claim of full upstream CDP coverage.
 
 ### Target Domain
 

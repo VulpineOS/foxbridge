@@ -77,33 +77,24 @@ Full documentation is available at **[foxbridge.vulpineos.com](https://foxbridge
 If you are using foxbridge with VulpineOS-specific `Page.*` extensions,
 see the passthrough guide in the docs: `VulpineOS Methods`.
 
-## CDP Domain Coverage
+## CDP Coverage Snapshot
 
-Need a current protocol snapshot instead of the hand-maintained tables below?
+`foxbridge doctor` is now the source of truth for protocol coverage:
 
 ```bash
 foxbridge doctor
 foxbridge doctor --format json
 ```
 
-The doctor command compares the current foxbridge bridge surface against a committed snapshot of the upstream Chrome DevTools Protocol definition and reports implemented, stubbed, missing, and extension methods.
+Current snapshot on `main` from `foxbridge doctor`:
 
-| Domain | Methods | Status |
-|--------|---------|--------|
-| **Target** | setAutoAttach, createTarget, closeTarget, createBrowserContext, disposeBrowserContext, getTargets, attachToTarget, activateTarget, getBrowserContexts, getTargetInfo, setDiscoverTargets | Full |
-| **Page** | navigate, reload, close, captureScreenshot, printToPDF, getFrameTree, getLayoutMetrics, setContent, handleJavaScriptDialog, addScriptToEvaluateOnNewDocument, removeScriptToEvaluateOnNewDocument, createIsolatedWorld, setBypassCSP, bringToFront, stopLoading, getNavigationHistory, getResourceTree, setExtraHTTPHeaders | Full |
-| **Runtime** | evaluate, callFunctionOn, releaseObject, getProperties, releaseObjectGroup, addBinding, discardConsoleEntries (+ awaitPromise wrapping) | Full |
-| **Input** | dispatchMouseEvent (incl. wheel deltaX/Y), dispatchKeyEvent, insertText, dispatchTouchEvent | Full |
-| **Network** | setCookies, getCookies, clearBrowserCookies, setExtraHTTPHeaders, setRequestInterception, getResponseBody, emulateNetworkConditions, setUserAgentOverride | Full |
-| **Fetch** | enable, disable, continueRequest, fulfillRequest, failRequest, getResponseBody | Full |
-| **Emulation** | setGeolocationOverride, setUserAgentOverride, setTimezoneOverride, setLocaleOverride, setDeviceMetricsOverride, setTouchEmulationEnabled, setEmulatedMedia, setScrollbarsHidden | Full |
-| **DOM** | getDocument, querySelector, querySelectorAll, describeNode, resolveNode, getBoxModel, getContentQuads, getOuterHTML, scrollIntoViewIfNeeded, focus, setFileInputFiles, getAttributes | Full |
-| **Accessibility** | getFullAXTree | Full |
-| **Console** | enable, disable | Full |
-| **Browser** | getVersion, close, getWindowForTarget, setWindowBounds | Full |
-| **Performance** | getMetrics (real timing data from page) | Full |
-| **IO** | read, close (PDF streaming for Puppeteer v24+) | Full |
-| **Stubs** | Debugger, Profiler, HeapProfiler, Memory, ServiceWorker, CSS, Overlay, DOMStorage, WebAuthn, Media, Audits, Inspector, + 8 more (20 total) | No-op |
+- `662` upstream CDP methods in the bundled protocol snapshot
+- `89` implemented methods
+- `203` stubbed compatibility methods
+- `370` missing methods
+- `8` foxbridge-only extensions
+
+The strongest covered areas today are `DOM`, `Page`, `Target`, `Network`, `Fetch`, `Runtime`, `Input`, `Emulation`, `IO`, and `Performance`. Stubbed domains still exist for compatibility, but foxbridge should no longer be described as “13 fully implemented CDP domains”.
 
 ## Event Translation
 

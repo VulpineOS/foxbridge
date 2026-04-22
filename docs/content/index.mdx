@@ -40,21 +40,23 @@ CDP Client (Puppeteer, OpenClaw, etc.)
 └────────────────────────────────────┘
 ```
 
-## CDP Domains Implemented
+## CDP Coverage Snapshot
 
-| Domain | Methods | Notes |
-|--------|---------|-------|
-| Target | createTarget, closeTarget, setAutoAttach, getBrowserContexts | Full session management |
-| Page | navigate, reload, setContent, screenshot, printToPDF, createIsolatedWorld | Complete |
-| Runtime | evaluate, callFunctionOn, getProperties, releaseObject | Full with $eval combine |
-| Input | dispatchMouseEvent, dispatchKeyEvent, dispatchTouchEvent, insertText | All event types |
-| Network | setCookies, getCookies, deleteCookies, setUserAgentOverride, setRequestInterception | Full |
-| Emulation | setDeviceMetricsOverride, setUserAgentOverride, setGeolocationOverride, setTimezoneOverride | Complete |
-| DOM | getDocument, querySelector, describeNode, resolveNode, getBoxModel, scrollIntoView | Core methods |
-| Fetch | enable, continueRequest, fulfillRequest, failRequest, getResponseBody, continueResponse | Request interception |
-| Performance | getMetrics | Real timing data |
-| Accessibility | getFullAXTree | Pass-through |
-| IO | read, close | PDF streaming |
+The authoritative answer now comes from:
+
+```bash
+foxbridge doctor
+```
+
+Current snapshot on `main`:
+
+- `662` upstream CDP methods in the bundled protocol snapshot
+- `89` implemented methods
+- `203` stubbed compatibility methods
+- `370` missing methods
+- `8` foxbridge-only extensions
+
+The most complete areas today are `DOM`, `Page`, `Target`, `Network`, `Fetch`, `Runtime`, `Input`, `Emulation`, `IO`, and `Performance`. Compatibility stubs still exist for unimplemented or low-priority domains, and product-specific `Page.*` extensions are reported separately by the doctor command.
 
 ## Part of VulpineOS
 
@@ -69,6 +71,6 @@ Foxbridge is a core component of [VulpineOS](https://vulpineos.com) — operate 
 
 - [Quick Start](/quick-start) — Install and run foxbridge in 2 minutes
 - [Architecture](/architecture) — How CDP-to-Firefox translation works under the hood
-- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented CDP domains
+- [CDP Domain Coverage](/cdp-coverage) — Current coverage snapshot and major supported areas
 - [VulpineOS Integration](/vulpineos) — Embedded foxbridge for AI browser agents
 - [Foxbridge vs Alternatives](/comparison) — Compare with native BiDi, Playwright, and Chrome
