@@ -186,7 +186,7 @@ When `--record` is set, foxbridge writes every inbound and outbound CDP frame fo
 
 foxbridge has comprehensive test coverage across three layers:
 
-- **227 Go unit tests** — all passing with race detector (`go test -race ./...`)
+- **379 Go unit tests** — all passing with race detector (`go test -race ./...`)
 - **74/74 Puppeteer Juggler tests** — full Puppeteer test suite against the Juggler backend
 - **62/62 Puppeteer BiDi tests** — full Puppeteer test suite against the BiDi backend
 
