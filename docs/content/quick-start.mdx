@@ -34,6 +34,14 @@ curl --unix-socket /tmp/foxbridge.sock http://localhost/json/version
 
 This avoids allocating a local TCP port. HTTP discovery still works through the socket, and WebSocket clients should connect to the normal foxbridge path using their library's Unix-socket transport support.
 
+### Deterministic Runtime for Repeatable Captures
+
+```bash
+foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --deterministic-seed 42 --headless
+```
+
+This injects deterministic `Date.now`, `performance.now`, `Math.random`, and `crypto.getRandomValues` shims into page sessions so screenshot and snapshot tests can run with lower flake.
+
 ### Connect with Puppeteer
 
 ```javascript

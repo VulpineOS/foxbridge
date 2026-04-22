@@ -33,6 +33,12 @@ go test ./pkg/bridge/
 go test ./pkg/cdp/
 ```
 
+For lower-flake screenshot and snapshot captures, start foxbridge with deterministic runtime injection:
+
+```bash
+foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --deterministic-seed 42 --headless
+```
+
 ## Test Files
 
 | File | Coverage |

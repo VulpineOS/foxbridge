@@ -109,6 +109,9 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		}
 
 		if params.URL != "" && params.URL != "about:blank" {
+			if cdpSessionID, ok := b.waitForPageSession(targetID, 500*time.Millisecond); ok {
+				b.applyDeterministicPrelude(cdpSessionID)
+			}
 			if err := b.navigateNewTarget(targetID, params.URL); err != nil {
 				return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 			}
@@ -358,6 +361,17 @@ func (b *Bridge) navigateNewTarget(targetID, url string) error {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return fmt.Errorf("target %s not ready for initial navigation to %s", targetID, url)
+}
+
+func (b *Bridge) waitForPageSession(targetID string, timeout time.Duration) (string, bool) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if info, ok := b.sessions.GetByTarget(targetID); ok && info.Type == "page" {
+			return info.SessionID, true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return "", false
 }
 
 func marshalResult(v interface{}) (json.RawMessage, *cdp.Error) {

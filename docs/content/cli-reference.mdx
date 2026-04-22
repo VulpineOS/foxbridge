@@ -24,6 +24,8 @@ foxbridge doctor [--format text|json]
 | `--backend` | string | `juggler` | Backend protocol: `juggler` or `bidi` |
 | `--bidi-url` | string | (none) | BiDi WebSocket URL (skip browser launch) |
 | `--bidi-port` | int | `9223` | Port for BiDi WebSocket when auto-launching |
+| `--deterministic-time` | int | `0` | Base epoch in milliseconds for deterministic `Date.now` / `performance.now` injection |
+| `--deterministic-seed` | uint | `0` | Seed for deterministic `Math.random` / `crypto.getRandomValues` injection |
 
 ## Doctor Command
 
@@ -67,6 +69,14 @@ foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock --headless
 ```
 
 Skips TCP port allocation and serves CDP discovery plus WebSocket traffic through a Unix domain socket. Clients should keep using the normal browser WebSocket path, for example `ws://localhost/devtools/browser/foxbridge`, but must dial it with their library's Unix-socket transport or `socketPath` option.
+
+### Deterministic Runtime for Snapshot Tests
+
+```bash
+foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --deterministic-seed 42 --headless
+```
+
+Injects a deterministic runtime prelude into page sessions so `Date.now`, `performance.now`, `Math.random`, and `crypto.getRandomValues` return repeatable values. This is useful for low-flake screenshot, snapshot, and fixture-capture workflows.
 
 ### Custom Profile
 

@@ -51,6 +51,10 @@ type Bridge struct {
 	// The next executionContextCreated should trigger isolated world re-emission.
 	pendingContextClearMu sync.Mutex
 	pendingContextClear   map[string]bool // cdpSessionID → true
+	// deterministicScript is injected into page sessions when deterministic mode is enabled.
+	deterministicMu      sync.RWMutex
+	deterministicScript  string
+	deterministicApplied map[string]bool // cdpSessionID → script installed
 }
 
 func (b *Bridge) cdpBrowserContextID(id string) string {
@@ -76,23 +80,24 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server, is
 	bidi := len(isBiDi) > 0 && isBiDi[0]
 	_ = bidi
 	return &Bridge{
-		backend:             b,
-		isBiDi:              bidi,
-		sessions:            sessions,
-		server:              server,
-		autoAttach:          newAutoAttachState(),
-		ctxMap:              make(map[int]string),
-		ctxCounter:          100,
-		loaderMap:           make(map[string]string),
-		latestCtx:           make(map[string]string),
-		isolatedWorlds:      make(map[string][]isolatedWorldInfo),
-		nodeObjects:         make(map[int]string),
-		lastQuery:           make(map[string]string),
-		lastQueryAll:        make(map[string]bool),
-		lastQuerySkips:      make(map[string]int),
-		lastDialog:          make(map[string]string),
-		pdfStreams:          make(map[string]string),
-		pendingContextClear: make(map[string]bool),
+		backend:              b,
+		isBiDi:               bidi,
+		sessions:             sessions,
+		server:               server,
+		autoAttach:           newAutoAttachState(),
+		ctxMap:               make(map[int]string),
+		ctxCounter:           100,
+		loaderMap:            make(map[string]string),
+		latestCtx:            make(map[string]string),
+		isolatedWorlds:       make(map[string][]isolatedWorldInfo),
+		nodeObjects:          make(map[int]string),
+		lastQuery:            make(map[string]string),
+		lastQueryAll:         make(map[string]bool),
+		lastQuerySkips:       make(map[string]int),
+		lastDialog:           make(map[string]string),
+		pdfStreams:           make(map[string]string),
+		pendingContextClear:  make(map[string]bool),
+		deterministicApplied: make(map[string]bool),
 	}
 }
 

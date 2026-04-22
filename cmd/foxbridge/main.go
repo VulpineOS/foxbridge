@@ -31,6 +31,8 @@ func main() {
 	backendMode := flag.String("backend", "juggler", "Backend protocol: juggler or bidi")
 	bidiURL := flag.String("bidi-url", "", "BiDi WebSocket URL (for --backend bidi without launching Firefox)")
 	bidiPort := flag.Int("bidi-port", 9223, "Port for BiDi WebSocket when auto-launching Firefox")
+	deterministicTime := flag.Int64("deterministic-time", 0, "Base epoch in milliseconds for deterministic Date.now/performance.now injection")
+	deterministicSeed := flag.Uint("deterministic-seed", 0, "Seed for deterministic Math.random/crypto.getRandomValues injection")
 	flag.Parse()
 
 	var be backendpkg.Backend
@@ -116,6 +118,12 @@ func main() {
 
 	// Create bridge and set up event subscriptions BEFORE enabling Browser.
 	b = bridge.New(be, sessions, server, *backendMode == "bidi")
+	if *deterministicTime != 0 || *deterministicSeed != 0 {
+		b.SetDeterministicConfig(bridge.DeterministicConfig{
+			TimeMS: *deterministicTime,
+			Seed:   uint32(*deterministicSeed),
+		})
+	}
 	b.SetupEventSubscriptions()
 
 	// Enable Browser domain with attachToDefaultContext.
@@ -137,6 +145,9 @@ func main() {
 	log.Printf("foxbridge CDP proxy listening on %s (backend: %s)", server.ListenDescription(), *backendMode)
 	if *socket != "" {
 		log.Printf("foxbridge unix-socket clients should use socketPath=%s with %s", *socket, server.BrowserWSURL())
+	}
+	if *deterministicTime != 0 || *deterministicSeed != 0 {
+		log.Printf("foxbridge deterministic runtime enabled (time=%d seed=%d)", *deterministicTime, *deterministicSeed)
 	}
 
 	// Wait for signal or Firefox exit.

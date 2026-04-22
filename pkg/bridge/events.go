@@ -135,6 +135,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 		b.autoAttach.mu.Unlock()
 		b.sessions.Add(pageInfo)
+		b.applyDeterministicPrelude(pageSessionID)
 		// Register the TAB session (stub — doesn't map to Juggler session to avoid
 		// overwriting the PAGE session in jugglerSessions lookup)
 		b.sessions.Add(&cdp.SessionInfo{

@@ -63,6 +63,9 @@ foxbridge --backend bidi --bidi-url ws://localhost:9223/session
 # Serve CDP over a Unix domain socket
 foxbridge --binary /path/to/camoufox --socket /tmp/foxbridge.sock
 
+# Enable deterministic runtime shims for low-flake tests
+foxbridge --binary /path/to/camoufox --deterministic-time 1700000000000 --deterministic-seed 42
+
 # Print a protocol coverage report
 foxbridge doctor
 
@@ -163,8 +166,12 @@ No separate process needed — VulpineOS imports foxbridge as a Go library and s
 | `--backend` | juggler | Backend: `juggler` or `bidi` |
 | `--bidi-url` | — | Connect to existing BiDi endpoint |
 | `--bidi-port` | 9223 | BiDi port when auto-launching Firefox |
+| `--deterministic-time` | 0 | Base epoch in milliseconds for deterministic `Date.now` / `performance.now` injection |
+| `--deterministic-seed` | 0 | Seed for deterministic `Math.random` / `crypto.getRandomValues` injection |
 
 When `--socket` is set, foxbridge listens on a Unix domain socket instead of binding a TCP port. Discovery endpoints are still available over HTTP, and the browser-level WebSocket URL remains `/devtools/browser/foxbridge`; clients must dial that URL using their library's Unix-socket transport or `socketPath` option.
+
+When either deterministic flag is set, foxbridge injects a deterministic runtime prelude into page sessions so `Date.now`, `performance.now`, `Math.random`, and `crypto.getRandomValues` become repeatable across runs.
 
 ## Testing
 
