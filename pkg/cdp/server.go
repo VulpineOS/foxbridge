@@ -1,6 +1,7 @@
 package cdp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,6 +59,8 @@ type Server struct {
 	conns    map[*Connection]struct{}
 	connsMu  sync.Mutex
 	sessions *SessionManager
+	serverMu sync.Mutex
+	server   *http.Server
 }
 
 // NewServer creates a CDP server on the given port.
@@ -158,8 +161,69 @@ func (s *Server) Start() error {
 	if s.socket != "" {
 		defer os.Remove(s.socket)
 	}
+	srv := &http.Server{Handler: s.mux()}
+	s.serverMu.Lock()
+	if s.server != nil {
+		s.serverMu.Unlock()
+		ln.Close()
+		return fmt.Errorf("server already running")
+	}
+	s.server = srv
+	s.serverMu.Unlock()
+
 	log.Printf("foxbridge CDP server listening on %s", s.ListenDescription())
-	return http.Serve(ln, s.mux())
+	err = srv.Serve(ln)
+
+	s.serverMu.Lock()
+	if s.server == srv {
+		s.server = nil
+	}
+	s.serverMu.Unlock()
+
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// Shutdown gracefully stops the CDP HTTP server and closes any active WebSocket clients.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.serverMu.Lock()
+	srv := s.server
+	s.serverMu.Unlock()
+	if srv == nil {
+		return nil
+	}
+	err := srv.Shutdown(ctx)
+	s.closeConnections()
+	return err
+}
+
+// Close immediately stops the CDP HTTP server and closes any active WebSocket clients.
+func (s *Server) Close() error {
+	s.serverMu.Lock()
+	srv := s.server
+	s.serverMu.Unlock()
+	if srv == nil {
+		return nil
+	}
+	err := srv.Close()
+	s.closeConnections()
+	return err
+}
+
+func (s *Server) closeConnections() {
+	s.connsMu.Lock()
+	conns := make([]*Connection, 0, len(s.conns))
+	for c := range s.conns {
+		conns = append(conns, c)
+		delete(s.conns, c)
+	}
+	s.connsMu.Unlock()
+
+	for _, c := range conns {
+		_ = c.ws.Close()
+	}
 }
 
 // Broadcast sends a CDP message to all connected clients.

@@ -1,9 +1,11 @@
 package cdp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -346,4 +348,54 @@ func TestServer_ListenUnixSocket_ReplacesStalePath(t *testing.T) {
 	if info.Mode()&os.ModeSocket == 0 {
 		t.Fatalf("mode = %v, want unix socket", info.Mode())
 	}
+}
+
+func TestServer_ShutdownReleasesPort(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close reserved listener: %v", err)
+	}
+
+	s := NewServer(port, nil, NewSessionManager())
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Start()
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", port))
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("server did not start: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Start returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not exit after shutdown")
+	}
+
+	ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("listen on released port: %v", err)
+	}
+	ln.Close()
 }
