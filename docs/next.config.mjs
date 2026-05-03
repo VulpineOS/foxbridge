@@ -7,5 +7,5 @@ const withNextra = nextra({})
 
 export default withNextra({
   images: { unoptimized: true },
-  outputFileTracingRoot: path.join(docsDir, '..'),
+  outputFileTracingRoot: docsDir,
 })
