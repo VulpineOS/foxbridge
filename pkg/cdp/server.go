@@ -145,6 +145,7 @@ func (s *Server) listen() (net.Listener, error) {
 func (s *Server) mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/json/version", s.handleVersion)
+	mux.HandleFunc("/json/version/", s.handleVersion)
 	mux.HandleFunc("/json", s.handleList)
 	mux.HandleFunc("/json/list", s.handleList)
 	mux.HandleFunc("/devtools/browser/", s.handleWS)

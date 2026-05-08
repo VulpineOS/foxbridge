@@ -32,35 +32,39 @@ func TestServer_JSONVersion(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/json/version")
-	if err != nil {
-		t.Fatalf("GET /json/version: %v", err)
-	}
-	defer resp.Body.Close()
+	for _, path := range []string{"/json/version", "/json/version/"} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		t.Errorf("status = %d, want 200", resp.StatusCode)
-	}
+			if resp.StatusCode != 200 {
+				t.Errorf("status = %d, want 200", resp.StatusCode)
+			}
 
-	ct := resp.Header.Get("Content-Type")
-	if ct != "application/json" {
-		t.Errorf("Content-Type = %q, want application/json", ct)
-	}
+			ct := resp.Header.Get("Content-Type")
+			if ct != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", ct)
+			}
 
-	body, _ := io.ReadAll(resp.Body)
-	var info map[string]string
-	if err := json.Unmarshal(body, &info); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+			body, _ := io.ReadAll(resp.Body)
+			var info map[string]string
+			if err := json.Unmarshal(body, &info); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
 
-	if info["Browser"] != "foxbridge/1.0" {
-		t.Errorf("Browser = %q, want foxbridge/1.0", info["Browser"])
-	}
-	if info["Protocol-Version"] != "1.3" {
-		t.Errorf("Protocol-Version = %q, want 1.3", info["Protocol-Version"])
-	}
-	if info["webSocketDebuggerUrl"] == "" {
-		t.Error("webSocketDebuggerUrl is empty")
+			if info["Browser"] != "foxbridge/1.0" {
+				t.Errorf("Browser = %q, want foxbridge/1.0", info["Browser"])
+			}
+			if info["Protocol-Version"] != "1.3" {
+				t.Errorf("Protocol-Version = %q, want 1.3", info["Protocol-Version"])
+			}
+			if info["webSocketDebuggerUrl"] == "" {
+				t.Error("webSocketDebuggerUrl is empty")
+			}
+		})
 	}
 }
 
