@@ -62,6 +62,37 @@ func TestHandleRuntime_Evaluate_Basic(t *testing.T) {
 	}
 }
 
+func TestHandleRuntime_EvaluateAddsUndefinedTypeForEmptyResult(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Runtime.evaluate", json.RawMessage(`{"result":{}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Runtime.evaluate",
+		Params: json.RawMessage(`{"expression":"document.querySelector('button').click()","returnByValue":true}`),
+	}
+	result, cdpErr := b.handleRuntime(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+	var res struct {
+		Result struct {
+			Type string `json:"type"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res.Result.Type != "undefined" {
+		t.Fatalf("result.type = %q, want undefined; raw=%s", res.Result.Type, string(result))
+	}
+
+	last, _ := mb.LastCall()
+	if last.Method != "Runtime.evaluate" {
+		t.Errorf("method = %q, want Runtime.evaluate", last.Method)
+	}
+}
+
 func TestHandleRuntime_Evaluate_ContextIDMapping(t *testing.T) {
 	b, mb := newTestBridge()
 	mb.SetResponse("", "Runtime.evaluate", json.RawMessage(`{}`), nil)

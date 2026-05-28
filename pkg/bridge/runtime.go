@@ -114,7 +114,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		}
 
 		log.Printf("[runtime] evaluate result: %s", string(result)[:min(len(result), 300)])
-		return result, nil
+		return normalizeRuntimeResult(result), nil
 
 	case "Runtime.callFunctionOn":
 		log.Printf("[runtime] callFunctionOn params: %s", string(msg.Params)[:min(len(msg.Params), 500)])
@@ -254,7 +254,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 				}
 			}
-			return result, nil
+			return normalizeRuntimeResult(result), nil
 		}
 
 		// Intercept Puppeteer's cssQuerySelector pattern — store the selector for the
@@ -319,7 +319,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 						b.nodeObjects[backendID] = evalResult.Result.ObjectID
 						b.nodeObjectsMu.Unlock()
 					}
-					return result, nil
+					return normalizeRuntimeResult(result), nil
 				}
 			}
 		}
@@ -397,7 +397,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 
-		return result, nil
+		return normalizeRuntimeResult(result), nil
 
 	case "Runtime.releaseObject":
 		var params struct {
@@ -509,4 +509,38 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
+}
+
+func normalizeRuntimeResult(result json.RawMessage) json.RawMessage {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(result, &payload); err != nil {
+		return result
+	}
+	raw, ok := payload["result"]
+	if !ok || string(raw) == "null" {
+		payload["result"] = json.RawMessage(`{"type":"undefined"}`)
+		out, err := json.Marshal(payload)
+		if err != nil {
+			return result
+		}
+		return out
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return result
+	}
+	if _, ok := object["type"]; ok {
+		return result
+	}
+	object["type"] = json.RawMessage(`"undefined"`)
+	normalized, err := json.Marshal(object)
+	if err != nil {
+		return result
+	}
+	payload["result"] = normalized
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return result
+	}
+	return out
 }
