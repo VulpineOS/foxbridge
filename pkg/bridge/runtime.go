@@ -555,7 +555,21 @@ func normalizeRuntimeResult(result json.RawMessage) json.RawMessage {
 	if _, ok := object["type"]; ok {
 		return result
 	}
-	object["type"] = json.RawMessage(`"undefined"`)
+	// Infer type from the actual JSON value instead of hardcoding "undefined".
+	// Juggler omits the type field — we must provide it for CDP clients that check.
+	// SOURCE: Chrome DevTools Protocol — Runtime.evaluate returns {result:{type,value}}
+	inferredType := `"undefined"`
+	if rawVal, ok := object["value"]; ok && string(rawVal) != "null" {
+		valStr := string(rawVal)
+		if len(valStr) > 0 && valStr[0] == '"' {
+			inferredType = `"string"`
+		} else if valStr == "true" || valStr == "false" {
+			inferredType = `"boolean"`
+		} else if valStr[0] >= '0' && valStr[0] <= '9' || valStr[0] == '-' {
+			inferredType = `"number"`
+		}
+	}
+	object["type"] = json.RawMessage(inferredType)
 	normalized, err := json.Marshal(object)
 	if err != nil {
 		return result
