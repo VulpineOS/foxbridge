@@ -371,7 +371,6 @@ func TestSetupEventSubscriptions_AllEventsSubscribed(t *testing.T) {
 		"Network.responseReceived",
 		"Network.requestFinished",
 		"Network.requestFailed",
-		"Browser.requestIntercepted",
 		"Page.webSocketCreated",
 		"Page.webSocketOpened",
 		"Page.webSocketClosed",
@@ -530,6 +529,64 @@ func TestSetupEventSubscriptions_ScreencastFrame(t *testing.T) {
 
 	params := json.RawMessage(`{"data":"base64data","metadata":{"timestamp":1234}}`)
 	handlers[0]("jug-s1", params)
+}
+
+func TestSetupEventSubscriptions_RequestWillBeSent_Intercepted(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	// Register a session so resolveCDPSession works
+	b.sessions.Add(&cdp.SessionInfo{
+		SessionID:        "cdp-s1",
+		JugglerSessionID: "jug-s1",
+		TargetID:         "t1",
+	})
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Network.requestWillBeSent"]
+	mb.mu.Unlock()
+
+	if len(handlers) == 0 {
+		t.Fatal("no handler registered for Network.requestWillBeSent")
+	}
+
+	// Fire with isIntercepted: true — should emit Fetch.requestPaused + Network.requestWillBeSent
+	params := json.RawMessage(`{
+		"requestId": "req-1",
+		"url": "https://example.com/intercepted",
+		"method": "GET",
+		"headers": {"User-Agent": "test"},
+		"isNavigationRequest": true,
+		"isIntercepted": true,
+		"frameId": "frame-1"
+	}`)
+	handlers[0]("jug-s1", params)
+
+	// Fire with isIntercepted: false — should emit only Network.requestWillBeSent
+	paramsNotIntercepted := json.RawMessage(`{
+		"requestId": "req-2",
+		"url": "https://example.com/normal",
+		"method": "GET",
+		"headers": {},
+		"isNavigationRequest": false,
+		"isIntercepted": false,
+		"frameId": "frame-2"
+	}`)
+	handlers[0]("jug-s1", paramsNotIntercepted)
+}
+
+func TestSetupEventSubscriptions_BrowserRequestIntercepted_NotSubscribed(t *testing.T) {
+	b, mb := newTestBridge()
+	_ = b
+	b.SetupEventSubscriptions()
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Browser.requestIntercepted"]
+	mb.mu.Unlock()
+
+	if len(handlers) != 0 {
+		t.Error("Browser.requestIntercepted should not be subscribed (Juggler does not emit this event)")
+	}
 }
 
 func TestSetupEventSubscriptions_FileChooserOpened(t *testing.T) {

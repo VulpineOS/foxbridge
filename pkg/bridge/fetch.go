@@ -81,7 +81,7 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			jugglerParams["headers"] = headers
 		}
 
-		_, err := b.callJuggler("", "Browser.continueInterceptedRequest", jugglerParams)
+		_, err := b.callJuggler("", "Network.resumeInterceptedRequest", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
@@ -123,7 +123,7 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			"body":       params.Body,
 		}
 
-		_, err := b.callJuggler("", "Browser.fulfillInterceptedRequest", jugglerParams)
+		_, err := b.callJuggler("", "Network.fulfillInterceptedRequest", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
@@ -146,7 +146,7 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			"errorCode": errorCode,
 		}
 
-		_, err := b.callJuggler("", "Browser.abortInterceptedRequest", jugglerParams)
+		_, err := b.callJuggler("", "Network.abortInterceptedRequest", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
@@ -194,7 +194,7 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
-		result, err := b.callJuggler("", "Browser.getResponseBody", map[string]interface{}{
+		result, err := b.callJuggler("", "Network.getResponseBody", map[string]interface{}{
 			"requestId": params.RequestID,
 		})
 		if err != nil {
@@ -253,7 +253,7 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			jugglerParams["headers"] = headers
 		}
 
-		_, err := b.callJuggler("", "Browser.continueInterceptedRequest", jugglerParams)
+		_, err := b.callJuggler("", "Network.resumeInterceptedRequest", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
