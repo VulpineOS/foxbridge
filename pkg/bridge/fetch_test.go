@@ -113,10 +113,13 @@ func TestFetchDisableWithSession(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
+	}
 	var params map[string]interface{}
 	json.Unmarshal(last.Params, &params)
-	if params["browserContextId"] != "ctx-2" {
-		t.Errorf("browserContextId = %v, want ctx-2", params["browserContextId"])
+	if params["enabled"] != false {
+		t.Errorf("enabled = %v, want false", params["enabled"])
 	}
 }
 
