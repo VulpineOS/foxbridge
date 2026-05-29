@@ -365,8 +365,8 @@ func TestNetworkSetRequestInterception_WithPatterns(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	if last.Method != "Browser.setRequestInterception" {
-		t.Errorf("method = %q, want Browser.setRequestInterception", last.Method)
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 
 	var params map[string]interface{}
@@ -392,6 +392,10 @@ func TestNetworkSetRequestInterception_EmptyPatterns(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
+	}
+
 	var params map[string]interface{}
 	json.Unmarshal(last.Params, &params)
 

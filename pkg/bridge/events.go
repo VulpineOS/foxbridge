@@ -367,7 +367,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Runtime.executionContextsCleared → Runtime.executionContextsCleared
-	// Also clear the ctxMap since all old context IDs are now stale
+	// Also clear the ctxMap and latestCtx since all old context IDs are now stale
 	b.backend.Subscribe("Runtime.executionContextsCleared", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 		if cdpSessionID != "" {
@@ -375,6 +375,16 @@ func (b *Bridge) SetupEventSubscriptions() {
 			b.ctxMapMu.Lock()
 			b.ctxMap = make(map[int]string)
 			b.ctxMapMu.Unlock()
+
+			// Clear latestCtx for this session to avoid stale context routing
+			b.latestCtxMu.Lock()
+			delete(b.latestCtx, jugglerSessionID)
+			b.latestCtxMu.Unlock()
+
+			// Clear mainCtx too — navigation creates entirely new contexts
+			b.mainCtxMu.Lock()
+			delete(b.mainCtx, jugglerSessionID)
+			b.mainCtxMu.Unlock()
 
 			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
 
@@ -426,6 +436,20 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtxMu.Lock()
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
+
+		// Track the main frame context separately. This survives subframe destruction
+		// and is used as fallback when latestCtx is cleared.
+		// Only update for main frame contexts (matching session's FrameID).
+		b.mainCtxMu.Lock()
+		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
+			if info.FrameID == "" || ev.AuxData.FrameID == info.FrameID {
+				b.mainCtx[jugglerSessionID] = ev.ExecutionContextID
+			}
+		} else {
+			// Session not yet registered — assume main frame
+			b.mainCtx[jugglerSessionID] = ev.ExecutionContextID
+		}
+		b.mainCtxMu.Unlock()
 
 		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.AuxData.FrameID)
 
@@ -527,6 +551,16 @@ func (b *Bridge) SetupEventSubscriptions() {
 				delete(b.ctxMap, numericID)
 				b.ctxMapMu.Unlock()
 			}
+
+			// Clear latestCtx if it points to the destroyed context.
+			// Without this, Runtime.evaluate without contextId would keep
+			// routing to a destroyed context, causing persistent
+			// "Failed to find execution context" errors.
+			b.latestCtxMu.Lock()
+			if b.latestCtx[jugglerSessionID] == ev.ExecutionContextID {
+				delete(b.latestCtx, jugglerSessionID)
+			}
+			b.latestCtxMu.Unlock()
 
 			b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
 				"executionContextId":       numericID,
@@ -649,19 +683,45 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}, cdpSessionID)
 	})
 
-	// Network.requestWillBeSent → Network.requestWillBeSent
+	// Network.requestWillBeSent → Network.requestWillBeSent (and Fetch.requestPaused if intercepted)
+	// SOURCE: Juggler NetworkObserver.js — _sendOnRequest sends headers as [{name, value}] array
 	b.backend.Subscribe("Network.requestWillBeSent", func(jugglerSessionID string, params json.RawMessage) {
-		var ev struct {
-			RequestID    string            `json:"requestId"`
-			FrameID      string            `json:"frameId"`
-			URL          string            `json:"url"`
-			Method       string            `json:"method"`
-			Headers      map[string]string `json:"headers"`
-			IsNavigation bool              `json:"isNavigationRequest"`
-			RedirectURL  string            `json:"redirectedFrom"`
+		// Juggler sends headers as [{name:"Host",value:"github.com"}], not as a map.
+		// Unmarshal into raw struct first, then convert headers to map.
+		var raw struct {
+			RequestID     string                `json:"requestId"`
+			FrameID       string                `json:"frameId"`
+			URL           string                `json:"url"`
+			Method        string                `json:"method"`
+			Headers       []struct{ Name string; Value string } `json:"headers"`
+			IsNavigation  bool                  `json:"isNavigationRequest"`
+			RedirectURL   string                `json:"redirectedFrom"`
+			IsIntercepted bool                  `json:"isIntercepted"`
 		}
-		if err := json.Unmarshal(params, &ev); err != nil {
+		if err := json.Unmarshal(params, &raw); err != nil {
 			return
+		}
+		ev := struct {
+			RequestID     string
+			FrameID       string
+			URL           string
+			Method        string
+			Headers       map[string]string
+			IsNavigation  bool
+			RedirectURL   string
+			IsIntercepted bool
+		}{
+			RequestID:     raw.RequestID,
+			FrameID:       raw.FrameID,
+			URL:           raw.URL,
+			Method:        raw.Method,
+			IsNavigation:  raw.IsNavigation,
+			RedirectURL:   raw.RedirectURL,
+			IsIntercepted: raw.IsIntercepted,
+			Headers:       make(map[string]string, len(raw.Headers)),
+		}
+		for _, h := range raw.Headers {
+			ev.Headers[h.Name] = h.Value
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
@@ -688,6 +748,46 @@ func (b *Bridge) SetupEventSubscriptions() {
 			resourceType = "WebSocket"
 		} else if !ev.IsNavigation {
 			resourceType = "Other"
+		}
+
+		// If request is intercepted, emit Fetch.requestPaused BEFORE Network.requestWillBeSent.
+		// Juggler uses Network.requestWillBeSent { isIntercepted: true } instead of a separate
+		// Browser.requestIntercepted event (which doesn't exist in Juggler).
+		if ev.IsIntercepted {
+			log.Printf("[event] Network.requestWillBeSent (intercepted) → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, ev.URL, cdpSessionID)
+
+			b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
+				"requestId":   ev.RequestID,
+				"loaderId":    ev.RequestID,
+				"documentURL": ev.URL,
+				"request": map[string]interface{}{
+					"url":             ev.URL,
+					"method":          ev.Method,
+					"headers":         cdpHeaders,
+					"initialPriority": "High",
+					"referrerPolicy":  "strict-origin-when-cross-origin",
+				},
+				"timestamp": 0,
+				"wallTime":  0,
+				"initiator": map[string]interface{}{"type": "other"},
+				"type":      resourceType,
+				"frameId":   cdpFrameID,
+			}, cdpSessionID)
+
+			b.emitEvent("Fetch.requestPaused", map[string]interface{}{
+				"requestId": ev.RequestID,
+				"networkId": ev.RequestID,
+				"request": map[string]interface{}{
+					"url":             ev.URL,
+					"method":          ev.Method,
+					"headers":         cdpHeaders,
+					"initialPriority": "High",
+					"referrerPolicy":  "strict-origin-when-cross-origin",
+				},
+				"frameId":      cdpFrameID,
+				"resourceType": resourceType,
+			}, cdpSessionID)
+			return
 		}
 
 		b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
@@ -867,117 +967,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Browser.requestIntercepted → Fetch.requestPaused
-	b.backend.Subscribe("Browser.requestIntercepted", func(jugglerSessionID string, params json.RawMessage) {
-		var ev struct {
-			RequestID string `json:"requestId"`
-			// Juggler sends request fields at top level (not nested in "request")
-			URL     string `json:"url"`
-			Method  string `json:"method"`
-			Headers []struct {
-				Name  string `json:"name"`
-				Value string `json:"value"`
-			} `json:"headers"`
-			// Nested format for backwards compatibility
-			Request struct {
-				URL     string            `json:"url"`
-				Method  string            `json:"method"`
-				Headers map[string]string `json:"headers"`
-			} `json:"request"`
-			FrameID             string `json:"frameId"`
-			IsNavigationRequest bool   `json:"isNavigationRequest"`
-			ResourceType        string `json:"resourceType"`
-		}
-		if err := json.Unmarshal(params, &ev); err != nil {
-			log.Printf("events: failed to parse Browser.requestIntercepted: %v", err)
-			return
-		}
-
-		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
-
-		// Browser.requestIntercepted is a browser-level event (no juggler session ID).
-		// Resolve the CDP session from the frameId so Puppeteer receives it on the page session.
-		if cdpSessionID == "" && ev.FrameID != "" {
-			if info, ok := b.sessions.GetByFrameID(ev.FrameID); ok {
-				cdpSessionID = info.SessionID
-			}
-		}
-
-		// Last resort: find any page session to deliver the event
-		if cdpSessionID == "" {
-			for _, info := range b.sessions.All() {
-				if info.Type == "page" {
-					cdpSessionID = info.SessionID
-					break
-				}
-			}
-		}
-
-		// Use top-level fields (new Juggler format) or nested request fields (fallback)
-		url := ev.URL
-		method := ev.Method
-		if url == "" {
-			url = ev.Request.URL
-			method = ev.Request.Method
-		}
-
-		// Convert headers array [{name,value}] to map for CDP
-		headerMap := map[string]string{}
-		for _, h := range ev.Headers {
-			headerMap[h.Name] = h.Value
-		}
-		if len(headerMap) == 0 {
-			headerMap = ev.Request.Headers
-		}
-
-		resourceType := ev.ResourceType
-		if resourceType == "" {
-			resourceType = "Other"
-			if ev.IsNavigationRequest {
-				resourceType = "Document"
-			}
-		}
-
-		cdpFrameID := ev.FrameID
-		if cdpSessionID != "" {
-			cdpFrameID = b.cdpFrameIDForSession(cdpSessionID, ev.FrameID)
-		}
-
-		log.Printf("[event] Browser.requestIntercepted → Fetch.requestPaused requestId=%s url=%s cdpSession=%s", ev.RequestID, url, cdpSessionID)
-
-		// Emit Network.requestWillBeSent BEFORE Fetch.requestPaused.
-		// Puppeteer needs both events with matching requestId/networkId to process interception.
-		b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
-			"requestId":   ev.RequestID,
-			"loaderId":    ev.RequestID,
-			"documentURL": url,
-			"request": map[string]interface{}{
-				"url":             url,
-				"method":          method,
-				"headers":         headerMap,
-				"initialPriority": "High",
-				"referrerPolicy":  "strict-origin-when-cross-origin",
-			},
-			"timestamp": 0,
-			"wallTime":  0,
-			"initiator": map[string]interface{}{"type": "other"},
-			"type":      resourceType,
-			"frameId":   cdpFrameID,
-		}, cdpSessionID)
-
-		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
-			"requestId": ev.RequestID,
-			"networkId": ev.RequestID,
-			"request": map[string]interface{}{
-				"url":             url,
-				"method":          method,
-				"headers":         headerMap,
-				"initialPriority": "High",
-				"referrerPolicy":  "strict-origin-when-cross-origin",
-			},
-			"frameId":      cdpFrameID,
-			"resourceType": resourceType,
-		}, cdpSessionID)
-	})
+	// REMOVED: Juggler does NOT emit Browser.requestIntercepted events.
+	// Instead, Juggler uses Network.requestWillBeSent with isIntercepted: true.
+	// The isIntercepted check is now handled in the Network.requestWillBeSent handler above.
+	//
+	// b.backend.Subscribe("Browser.requestIntercepted", func(jugglerSessionID string, params json.RawMessage) {
+	// 	... (old handler code)
+	// })
 }
 
 // emitTabAttach emits the tab-level attachment on the browser session.

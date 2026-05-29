@@ -29,8 +29,8 @@ func TestFetchEnable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if last.Method != "Browser.setRequestInterception" {
-		t.Errorf("method = %q, want Browser.setRequestInterception", last.Method)
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 
 	var params map[string]interface{}
@@ -60,10 +60,8 @@ func TestFetchEnableWithSession(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	var params map[string]interface{}
-	json.Unmarshal(last.Params, &params)
-	if params["browserContextId"] != "ctx-1" {
-		t.Errorf("browserContextId = %v, want ctx-1", params["browserContextId"])
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 }
 
@@ -84,8 +82,8 @@ func TestFetchDisable(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	if last.Method != "Browser.setRequestInterception" {
-		t.Errorf("method = %q, want Browser.setRequestInterception", last.Method)
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 
 	var params map[string]interface{}
@@ -115,10 +113,13 @@ func TestFetchDisableWithSession(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
+	}
 	var params map[string]interface{}
 	json.Unmarshal(last.Params, &params)
-	if params["browserContextId"] != "ctx-2" {
-		t.Errorf("browserContextId = %v, want ctx-2", params["browserContextId"])
+	if params["enabled"] != false {
+		t.Errorf("enabled = %v, want false", params["enabled"])
 	}
 }
 
@@ -146,8 +147,8 @@ func TestFetchContinueRequest_HeaderConversion(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	if last.Method != "Browser.continueInterceptedRequest" {
-		t.Errorf("method = %q, want Browser.continueInterceptedRequest", last.Method)
+	if last.Method != "Network.resumeInterceptedRequest" {
+		t.Errorf("method = %q, want Network.resumeInterceptedRequest", last.Method)
 	}
 
 	var params map[string]interface{}
@@ -276,8 +277,8 @@ func TestFetchFulfillRequest(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	if last.Method != "Browser.fulfillInterceptedRequest" {
-		t.Errorf("method = %q, want Browser.fulfillInterceptedRequest", last.Method)
+	if last.Method != "Network.fulfillInterceptedRequest" {
+		t.Errorf("method = %q, want Network.fulfillInterceptedRequest", last.Method)
 	}
 
 	var params map[string]interface{}
@@ -413,8 +414,8 @@ func TestFetchFailRequest_AllErrorReasons(t *testing.T) {
 			}
 
 			last, _ := mb.LastCall()
-			if last.Method != "Browser.abortInterceptedRequest" {
-				t.Errorf("method = %q, want Browser.abortInterceptedRequest", last.Method)
+			if last.Method != "Network.abortInterceptedRequest" {
+				t.Errorf("method = %q, want Network.abortInterceptedRequest", last.Method)
 			}
 
 			var p map[string]interface{}
@@ -459,7 +460,7 @@ func TestFetchGetResponseBody_Base64(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString(binaryData)
 
 	resp, _ := json.Marshal(map[string]string{"base64body": b64})
-	mb.SetResponse("", "Browser.getResponseBody", resp, nil)
+	mb.SetResponse("", "Network.getResponseBody", resp, nil)
 
 	msg := &cdp.Message{
 		ID:     1,
@@ -493,7 +494,7 @@ func TestFetchGetResponseBody_UTF8Text(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString([]byte(textData))
 
 	resp, _ := json.Marshal(map[string]string{"base64body": b64})
-	mb.SetResponse("", "Browser.getResponseBody", resp, nil)
+	mb.SetResponse("", "Network.getResponseBody", resp, nil)
 
 	msg := &cdp.Message{
 		ID:     1,
