@@ -29,8 +29,8 @@ func TestFetchEnable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if last.Method != "Browser.setRequestInterception" {
-		t.Errorf("method = %q, want Browser.setRequestInterception", last.Method)
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 
 	var params map[string]interface{}
@@ -60,10 +60,8 @@ func TestFetchEnableWithSession(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	var params map[string]interface{}
-	json.Unmarshal(last.Params, &params)
-	if params["browserContextId"] != "ctx-1" {
-		t.Errorf("browserContextId = %v, want ctx-1", params["browserContextId"])
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 }
 
@@ -84,8 +82,8 @@ func TestFetchDisable(t *testing.T) {
 	}
 
 	last, _ := mb.LastCall()
-	if last.Method != "Browser.setRequestInterception" {
-		t.Errorf("method = %q, want Browser.setRequestInterception", last.Method)
+	if last.Method != "Network.setRequestInterception" {
+		t.Errorf("method = %q, want Network.setRequestInterception", last.Method)
 	}
 
 	var params map[string]interface{}

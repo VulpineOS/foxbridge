@@ -120,16 +120,18 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			json.Unmarshal(msg.Params, &params)
 		}
 
+		// Network.setRequestInterception is a PAGE-level handler in Juggler.
+		// Pass through directly to Juggler's Network.setRequestInterception.
+		// SOURCE: Juggler PageHandler.js — Network.setRequestInterception
 		jugglerParams := map[string]interface{}{
 			"enabled": len(params.Patterns) > 0,
 		}
 		if msg.SessionID != "" {
 			if info, ok := b.sessions.Get(msg.SessionID); ok {
-				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
+				jugglerParams["browserContextId"] = info.BrowserContextID
 			}
 		}
-
-		_, err := b.callJuggler("", "Browser.setRequestInterception", jugglerParams)
+		_, err := b.callJuggler(msg.SessionID, "Network.setRequestInterception", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}

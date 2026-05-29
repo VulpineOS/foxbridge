@@ -19,16 +19,20 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			json.Unmarshal(msg.Params, &params)
 		}
 
+		// Network.setRequestInterception is a PAGE-level handler in Juggler.
+		// It calls enableRequestInterception() on the page's NetworkObserver.
+		// Browser.setRequestInterception only sets a flag — does NOT enable interception.
+		// SOURCE: Juggler PageHandler.js — Network.setRequestInterception
+		// SOURCE: Juggler NetworkObserver.js — enableRequestInterception sets _requestInterceptionEnabled
 		jugglerParams := map[string]interface{}{
 			"enabled": true,
 		}
 		if msg.SessionID != "" {
 			if info, ok := b.sessions.Get(msg.SessionID); ok {
-				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
+				jugglerParams["browserContextId"] = info.BrowserContextID
 			}
 		}
-
-		_, err := b.callJuggler("", "Browser.setRequestInterception", jugglerParams)
+		_, err := b.callJuggler(msg.SessionID, "Network.setRequestInterception", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
@@ -40,11 +44,10 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		}
 		if msg.SessionID != "" {
 			if info, ok := b.sessions.Get(msg.SessionID); ok {
-				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
+				jugglerParams["browserContextId"] = info.BrowserContextID
 			}
 		}
-
-		_, err := b.callJuggler("", "Browser.setRequestInterception", jugglerParams)
+		_, err := b.callJuggler(msg.SessionID, "Network.setRequestInterception", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
