@@ -684,19 +684,44 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Network.requestWillBeSent → Network.requestWillBeSent (and Fetch.requestPaused if intercepted)
+	// SOURCE: Juggler NetworkObserver.js — _sendOnRequest sends headers as [{name, value}] array
 	b.backend.Subscribe("Network.requestWillBeSent", func(jugglerSessionID string, params json.RawMessage) {
-		var ev struct {
-			RequestID     string            `json:"requestId"`
-			FrameID       string            `json:"frameId"`
-			URL           string            `json:"url"`
-			Method        string            `json:"method"`
-			Headers       map[string]string `json:"headers"`
-			IsNavigation  bool              `json:"isNavigationRequest"`
-			RedirectURL   string            `json:"redirectedFrom"`
-			IsIntercepted bool              `json:"isIntercepted"`
+		// Juggler sends headers as [{name:"Host",value:"github.com"}], not as a map.
+		// Unmarshal into raw struct first, then convert headers to map.
+		var raw struct {
+			RequestID     string                `json:"requestId"`
+			FrameID       string                `json:"frameId"`
+			URL           string                `json:"url"`
+			Method        string                `json:"method"`
+			Headers       []struct{ Name string; Value string } `json:"headers"`
+			IsNavigation  bool                  `json:"isNavigationRequest"`
+			RedirectURL   string                `json:"redirectedFrom"`
+			IsIntercepted bool                  `json:"isIntercepted"`
 		}
-		if err := json.Unmarshal(params, &ev); err != nil {
+		if err := json.Unmarshal(params, &raw); err != nil {
 			return
+		}
+		ev := struct {
+			RequestID     string
+			FrameID       string
+			URL           string
+			Method        string
+			Headers       map[string]string
+			IsNavigation  bool
+			RedirectURL   string
+			IsIntercepted bool
+		}{
+			RequestID:     raw.RequestID,
+			FrameID:       raw.FrameID,
+			URL:           raw.URL,
+			Method:        raw.Method,
+			IsNavigation:  raw.IsNavigation,
+			RedirectURL:   raw.RedirectURL,
+			IsIntercepted: raw.IsIntercepted,
+			Headers:       make(map[string]string, len(raw.Headers)),
+		}
+		for _, h := range raw.Headers {
+			ev.Headers[h.Name] = h.Value
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
