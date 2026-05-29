@@ -61,8 +61,10 @@ func (c *Connection) Send(msg *Message) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	
-	// Option 1: Binary framing (more efficient than text)
-	msgType := websocket.BinaryMessage
+	// CDP messages are JSON text — use TextMessage (opcode 0x01) unless compressed.
+	// SOURCE: Chrome DevTools Protocol — wire format is JSON text frames
+	// BinaryMessage (opcode 0x02) is only used when payload is compressed (flate).
+	msgType := websocket.TextMessage
 	if c.compress {
 		msgType = websocket.BinaryMessage
 	}
@@ -93,7 +95,12 @@ func (c *Connection) SendBatch(msgs []Message) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	
-	msgType := websocket.BinaryMessage
+	// Use TextMessage for uncompressed, BinaryMessage for compressed.
+	// SOURCE: Chrome DevTools Protocol — wire format is JSON text frames
+	msgType := websocket.TextMessage
+	if c.compress {
+		msgType = websocket.BinaryMessage
+	}
 	if err := c.ws.WriteMessage(msgType, data); err != nil {
 		return err
 	}

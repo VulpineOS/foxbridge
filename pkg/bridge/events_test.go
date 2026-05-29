@@ -317,6 +317,11 @@ func TestSetupEventSubscriptions_ExecutionContextDestroyed(t *testing.T) {
 	b.ctxMap[150] = "jug-ctx-1"
 	b.ctxMapMu.Unlock()
 
+	// Pre-populate latestCtx to simulate a context that was once "latest"
+	b.latestCtxMu.Lock()
+	b.latestCtx["jug-s1"] = "jug-ctx-1"
+	b.latestCtxMu.Unlock()
+
 	mb.mu.Lock()
 	handlers := mb.handlers["Runtime.executionContextDestroyed"]
 	mb.mu.Unlock()
@@ -334,6 +339,14 @@ func TestSetupEventSubscriptions_ExecutionContextDestroyed(t *testing.T) {
 	b.ctxMapMu.RUnlock()
 	if exists {
 		t.Error("context mapping for 150 should have been removed")
+	}
+
+	// latestCtx should be cleared for the destroyed context
+	b.latestCtxMu.RLock()
+	latest := b.latestCtx["jug-s1"]
+	b.latestCtxMu.RUnlock()
+	if latest != "" {
+		t.Errorf("latestCtx for jug-s1 should be empty after context destruction, got %q", latest)
 	}
 }
 

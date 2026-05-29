@@ -32,6 +32,13 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			latestCtx := b.latestCtx[jugglerSessionID]
 			b.latestCtxMu.RUnlock()
 
+			// Fall back to mainCtx if latestCtx is empty (e.g., subframe was destroyed)
+			if latestCtx == "" {
+				b.mainCtxMu.RLock()
+				latestCtx = b.mainCtx[jugglerSessionID]
+				b.mainCtxMu.RUnlock()
+			}
+
 			if frameID != "" && latestCtx != "" {
 				ctxID := b.nextCtxID()
 				b.ctxMapMu.Lock()
@@ -85,6 +92,14 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		latest := b.latestContextForSession(msg.SessionID)
 		if latest != "" {
 			execCtxID = latest
+		} else {
+			// Fall back to main frame context when latestCtx is cleared (subframe destruction)
+			jugglerSessionID := b.resolveSession(msg.SessionID)
+			b.mainCtxMu.RLock()
+			if main := b.mainCtx[jugglerSessionID]; main != "" {
+				execCtxID = main
+			}
+			b.mainCtxMu.RUnlock()
 		}
 
 		// If awaitPromise is requested, wrap the expression so the promise is resolved
@@ -147,6 +162,14 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			latest := b.latestContextForSession(msg.SessionID)
 			if latest != "" {
 				execCtxID = latest
+			} else {
+				// Fall back to main frame context when latestCtx is cleared
+				jugglerSessionID := b.resolveSession(msg.SessionID)
+				b.mainCtxMu.RLock()
+				if main := b.mainCtx[jugglerSessionID]; main != "" {
+					execCtxID = main
+				}
+				b.mainCtxMu.RUnlock()
 			}
 		}
 
@@ -532,7 +555,21 @@ func normalizeRuntimeResult(result json.RawMessage) json.RawMessage {
 	if _, ok := object["type"]; ok {
 		return result
 	}
-	object["type"] = json.RawMessage(`"undefined"`)
+	// Infer type from the actual JSON value instead of hardcoding "undefined".
+	// Juggler omits the type field — we must provide it for CDP clients that check.
+	// SOURCE: Chrome DevTools Protocol — Runtime.evaluate returns {result:{type,value}}
+	inferredType := `"undefined"`
+	if rawVal, ok := object["value"]; ok && string(rawVal) != "null" {
+		valStr := string(rawVal)
+		if len(valStr) > 0 && valStr[0] == '"' {
+			inferredType = `"string"`
+		} else if valStr == "true" || valStr == "false" {
+			inferredType = `"boolean"`
+		} else if valStr[0] >= '0' && valStr[0] <= '9' || valStr[0] == '-' {
+			inferredType = `"number"`
+		}
+	}
+	object["type"] = json.RawMessage(inferredType)
 	normalized, err := json.Marshal(object)
 	if err != nil {
 		return result

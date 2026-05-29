@@ -367,7 +367,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Runtime.executionContextsCleared → Runtime.executionContextsCleared
-	// Also clear the ctxMap since all old context IDs are now stale
+	// Also clear the ctxMap and latestCtx since all old context IDs are now stale
 	b.backend.Subscribe("Runtime.executionContextsCleared", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 		if cdpSessionID != "" {
@@ -375,6 +375,16 @@ func (b *Bridge) SetupEventSubscriptions() {
 			b.ctxMapMu.Lock()
 			b.ctxMap = make(map[int]string)
 			b.ctxMapMu.Unlock()
+
+			// Clear latestCtx for this session to avoid stale context routing
+			b.latestCtxMu.Lock()
+			delete(b.latestCtx, jugglerSessionID)
+			b.latestCtxMu.Unlock()
+
+			// Clear mainCtx too — navigation creates entirely new contexts
+			b.mainCtxMu.Lock()
+			delete(b.mainCtx, jugglerSessionID)
+			b.mainCtxMu.Unlock()
 
 			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
 
@@ -426,6 +436,20 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtxMu.Lock()
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
+
+		// Track the main frame context separately. This survives subframe destruction
+		// and is used as fallback when latestCtx is cleared.
+		// Only update for main frame contexts (matching session's FrameID).
+		b.mainCtxMu.Lock()
+		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
+			if info.FrameID == "" || ev.AuxData.FrameID == info.FrameID {
+				b.mainCtx[jugglerSessionID] = ev.ExecutionContextID
+			}
+		} else {
+			// Session not yet registered — assume main frame
+			b.mainCtx[jugglerSessionID] = ev.ExecutionContextID
+		}
+		b.mainCtxMu.Unlock()
 
 		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.AuxData.FrameID)
 
@@ -527,6 +551,16 @@ func (b *Bridge) SetupEventSubscriptions() {
 				delete(b.ctxMap, numericID)
 				b.ctxMapMu.Unlock()
 			}
+
+			// Clear latestCtx if it points to the destroyed context.
+			// Without this, Runtime.evaluate without contextId would keep
+			// routing to a destroyed context, causing persistent
+			// "Failed to find execution context" errors.
+			b.latestCtxMu.Lock()
+			if b.latestCtx[jugglerSessionID] == ev.ExecutionContextID {
+				delete(b.latestCtx, jugglerSessionID)
+			}
+			b.latestCtxMu.Unlock()
 
 			b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
 				"executionContextId":       numericID,
