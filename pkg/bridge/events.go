@@ -381,6 +381,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 			delete(b.latestCtx, jugglerSessionID)
 			b.latestCtxMu.Unlock()
 
+			// Clear mainCtx too — navigation creates entirely new contexts
+			b.mainCtxMu.Lock()
+			delete(b.mainCtx, jugglerSessionID)
+			b.mainCtxMu.Unlock()
+
 			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
 
 			// Mark for isolated world re-emission
@@ -431,6 +436,20 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.latestCtxMu.Lock()
 		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
 		b.latestCtxMu.Unlock()
+
+		// Track the main frame context separately. This survives subframe destruction
+		// and is used as fallback when latestCtx is cleared.
+		// Only update for main frame contexts (matching session's FrameID).
+		b.mainCtxMu.Lock()
+		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
+			if info.FrameID == "" || ev.AuxData.FrameID == info.FrameID {
+				b.mainCtx[jugglerSessionID] = ev.ExecutionContextID
+			}
+		} else {
+			// Session not yet registered — assume main frame
+			b.mainCtx[jugglerSessionID] = ev.ExecutionContextID
+		}
+		b.mainCtxMu.Unlock()
 
 		cdpFrameID := b.cdpFrameIDForJugglerSession(jugglerSessionID, ev.AuxData.FrameID)
 

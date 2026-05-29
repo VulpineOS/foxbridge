@@ -29,6 +29,11 @@ type Bridge struct {
 	// latestCtx tracks the most recent Juggler execution context per session
 	latestCtxMu sync.RWMutex
 	latestCtx   map[string]string // jugglerSessionID → latest executionContextId
+	// mainCtx tracks the main frame's execution context per session.
+	// Unlike latestCtx, this survives subframe destruction — only cleared on navigation.
+	// Used as fallback when latestCtx is empty (subframe was destroyed).
+	mainCtxMu sync.RWMutex
+	mainCtx   map[string]string // jugglerSessionID → main frame executionContextId
 	// isolatedWorlds tracks isolated world names per CDP session for re-emission after navigation
 	isolatedWorldsMu sync.RWMutex
 	isolatedWorlds   map[string][]isolatedWorldInfo // cdpSessionID → list of isolated worlds
@@ -89,6 +94,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server, is
 		ctxCounter:           100,
 		loaderMap:            make(map[string]string),
 		latestCtx:            make(map[string]string),
+		mainCtx:              make(map[string]string),
 		isolatedWorlds:       make(map[string][]isolatedWorldInfo),
 		nodeObjects:          make(map[int]string),
 		lastQuery:            make(map[string]string),
